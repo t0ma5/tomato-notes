@@ -20,9 +20,9 @@ app-build-minimumSDK = "23"
 app-build-javaVersion = "VERSION_17"
 app-build-kotlinJVMTarget = "17"
 #versioning
-app-version-appId = "tomato.simple.notes"
-app-version-versionCode = "124"
-app-version-versionName = "6.18.0"
+app-version-appId = "tomato.notes"
+app-version-versionCode = "100"
+app-version-versionName = "1.0"
 markwon = "4.6.2"
 [libraries]
 #AndroidX

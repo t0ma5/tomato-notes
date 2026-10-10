@@ -1,0 +1,85 @@
+package tomato.notes.dialogs
+
+import android.app.Activity
+import android.content.DialogInterface.BUTTON_POSITIVE
+import com.simplemobiletools.commons.extensions.*
+import com.simplemobiletools.commons.helpers.PROTECTION_NONE
+import com.simplemobiletools.commons.helpers.ensureBackgroundThread
+import tomato.notes.R
+import tomato.notes.databinding.DialogNewNoteBinding
+import tomato.notes.extensions.config
+import tomato.notes.extensions.notesDB
+import tomato.notes.models.Note
+import tomato.notes.models.NoteType
+
+class NewNoteDialog(
+    val activity: Activity,
+    title: String? = null,
+    val setChecklistAsDefault: Boolean,
+    notebookId: Long = 0L,
+    callback: (note: Note) -> Unit,
+    cancelCallback: (() -> Unit)? = null
+) {
+    init {
+        val targetNotebookId = if (notebookId > 0L) notebookId else activity.config.currentNotebookId
+        val binding = DialogNewNoteBinding.inflate(activity.layoutInflater).apply {
+            val defaultType = when {
+                setChecklistAsDefault -> typeChecklist.id
+                activity.config.lastCreatedNoteType == NoteType.TYPE_TEXT.value -> typeTextNote.id
+                activity.config.lastCreatedNoteType == NoteType.TYPE_COUNTER.value -> typeCounter.id
+                else -> typeChecklist.id
+            }
+
+            newNoteType.check(defaultType)
+        }
+
+        binding.lockedNoteTitle.setText(title)
+
+        var noteCreated = false
+        activity.getAlertDialogBuilder()
+            .setPositiveButton(com.simplemobiletools.commons.R.string.ok, null)
+            .setNegativeButton(com.simplemobiletools.commons.R.string.cancel, null)
+            .apply {
+                activity.setupDialogStuff(binding.root, this, R.string.new_note) { alertDialog ->
+                    alertDialog.showKeyboard(binding.lockedNoteTitle)
+                    alertDialog.setOnDismissListener {
+                        if (!noteCreated) {
+                            cancelCallback?.invoke()
+                        }
+                    }
+
+                    alertDialog.getButton(BUTTON_POSITIVE).setOnClickListener {
+                        val newTitle = binding.lockedNoteTitle.value
+                        ensureBackgroundThread {
+                            when {
+                                newTitle.isEmpty() -> activity.toast(R.string.no_title)
+                                activity.notesDB.getNoteIdWithTitleInNotebook(newTitle, targetNotebookId) != null -> activity.toast(R.string.title_taken)
+                                else -> {
+                                    val type = when (binding.newNoteType.checkedRadioButtonId) {
+                                        binding.typeChecklist.id -> NoteType.TYPE_CHECKLIST
+                                        binding.typeCounter.id -> NoteType.TYPE_COUNTER
+                                        else -> NoteType.TYPE_TEXT
+                                    }
+
+                                    activity.config.lastCreatedNoteType = type.value
+                                    val newNote = Note(
+                                        id = null,
+                                        notebookId = targetNotebookId,
+                                        title = newTitle,
+                                        value = "",
+                                        type = type,
+                                        path = "",
+                                        protectionType = PROTECTION_NONE,
+                                        protectionHash = ""
+                                    )
+                                    noteCreated = true
+                                    callback(newNote)
+                                    alertDialog.dismiss()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    }
+}

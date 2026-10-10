@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="package_name">tomato.simple.notes</string>
+    <string name="package_name">tomato.notes</string>
 
     <!-- Release notes -->
     <string name="release_86">Allow changing checklist item sorting</string>

@@ -139,7 +139,7 @@ tasks.configureEach {
         val dir = layout.buildDirectory.dir("outputs/apk/core/release").get().asFile
         val abis = if (localArm64) listOf("arm64-v8a") else listOf("arm64-v8a", "armeabi-v7a", "x86_64", "universal")
         abis.forEach { abi ->
-            val dest = dir.resolve("Simple-Notes_${version}-FOSS-${abi}.apk")
+            val dest = dir.resolve("Tomato-Notes_${version}-FOSS-${abi}.apk")
             val src = dir.listFiles()
                 ?.filter { it.isFile && it.extension == "apk" && it.name.contains(abi) }
                 ?.minByOrNull { if (it.name == dest.name) 0 else 1 }

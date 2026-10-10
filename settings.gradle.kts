@@ -13,7 +13,7 @@ dependencyResolutionManagement {
         maven { setUrl("https://jitpack.io") }
     }
 }
-rootProject.name = "Simple-Notes"
+rootProject.name = "tomato-notes"
 include(":app")
 
 val simpleCommonsDir = rootDir.resolve("Simple-Commons")

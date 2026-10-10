@@ -73,7 +73,7 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleCoreRelease --stacktrace --no-daemon
 
-      - name: Name APK Simple-Notes_<version>-FOSS-<abi>
+      - name: Name APK Tomato-Notes_<version>-FOSS-<abi>
         id: apk
         run: |
           VERSION=$(grep -oP 'app-version-versionName = "\K[^"]+' gradle/libs.versions.toml)
@@ -84,7 +84,7 @@ jobs:
             local src
             src=$(find app/build/outputs/apk/core/release -name "*${abi}*.apk" | head -n 1)
             test -n "$src"
-            cp "$src" "dist/Simple-Notes_${VERSION}-FOSS-${abi}.apk"
+            cp "$src" "dist/Tomato-Notes_${VERSION}-FOSS-${abi}.apk"
           }
           copy_abi arm64-v8a
           copy_abi armeabi-v7a
@@ -95,8 +95,8 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Simple-Notes_${{ steps.apk.outputs.version }}
-          path: dist/Simple-Notes_*.apk
+          name: Tomato-Notes_${{ steps.apk.outputs.version }}
+          path: dist/Tomato-Notes_*.apk
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -104,26 +104,34 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           name: ${{ steps.apk.outputs.version }}
-          files: dist/Simple-Notes_*.apk
+          files: dist/Tomato-Notes_*.apk
           generate_release_notes: true
           body: |
-            Release-signed FOSS APKs for applicationId tomato.simple.notes.
-            `Simple-Notes_<version>-FOSS-arm64-v8a.apk` for most phones; `...-armeabi-v7a.apk` for 32-bit ARM; `...-x86_64.apk` for 64-bit emulators; `...-FOSS-universal.apk` has all three ABIs.
+            Release-signed FOSS APKs for applicationId tomato.notes.
+            `Tomato-Notes_<version>-FOSS-arm64-v8a.apk` for most phones; `...-armeabi-v7a.apk` for 32-bit ARM; `...-x86_64.apk` for 64-bit emulators; `...-FOSS-universal.apk` has all three ABIs.
             They can sit next to Play Store Simple Notes Pro. Launcher name is Notes.
 
-            ## New in 6.18.0
+            ## New in 1.0
 
-            1. **Read-only notes** — Overflow Make read-only / Allow editing. Blocks typing, checklist checks, and counter buttons. Survives app restart.
-            2. **Keyboard** — Opening the keyboard on a long note scrolls the caret into view.
-            3. **Paste** — Formatted paste becomes plain text. Composing keyboards (AnySoftKeyboard and similar) still work.
-            4. **Widgets** — Settings → Customize widget colors updates every Notes widget, not only the first one.
-            5. **Save icon / search** — Saved text notes no longer show Save again after a swipe. In-note search no longer crashes after changing notes.
-            6. **Android 16** — compileSdk and targetSdk 36. Toolbar sits below the status bar.
-            7. **Notes / notebooks** — Toolbar icon switches a two-column notes card grid and the notebooks grid. Notes is the default after install. Notebook cards show the count on the left and `:::` on the right; `:::` opens Rename / Pin / Lock / Delete. Lock a notebook with fingerprint, pattern, or PIN. Every notebook can be deleted. First install no longer creates a fake “General note”.
-            8. **About licences** — Third party licences now include Gson, Markwon, and Kotlinx Serialization.
-            9. **Dark red theme** — Default is the screenshot mockup turned dark: dark page, contrasting cards, red toolbar and status bar. Settings no longer closes on its own.
-            10. **Lock notes** — Lock a text note, checklist, or counter with fingerprint, pattern, or PIN. The card hides the preview and shows a lock in the lower-right.
-            11. **Encrypted exports** — Export with a password (AES) or as plain text. Locks are stripped in the backup so another phone can restore.
-            12. **Note cards** — Title plus 4 preview lines; each source line stays on one row and ellipsizes. Long-press a card to reorder.
+            New app id `tomato.notes` (versionCode 100). It does not update installs of `tomato.simple.notes`. About name is Tomato Notes. Launcher stays Notes.
+
+            1. **Print** — If the print page fails to load, a toast reports the error.
+            2. **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
+            3. **Read-only notes** — Overflow Make read-only / Allow editing. Blocks typing, checklist checks, and counter buttons. Survives app restart.
+            4. **Keyboard** — Opening the keyboard on a long note scrolls the caret into view.
+            5. **Paste** — Formatted paste becomes plain text. Composing keyboards (AnySoftKeyboard and similar) still work.
+            6. **Widgets** — Settings → Customize widget colors updates every Notes widget, not only the first one. Home-screen notebook widget.
+            7. **Save icon / search** — Saved text notes no longer show Save again after a swipe. In-note search no longer crashes after changing notes.
+            8. **Android 16** — compileSdk and targetSdk 36. Toolbar sits below the status bar.
+            9. **Notes / notebooks** — Toolbar icon switches a two-column notes card grid and the notebooks grid. Notes is the default after install. Create, rename, pin, reorder, lock, and delete notebooks. Cards show the count on the left and `:::` on the right. Lock a notebook with fingerprint, pattern, or PIN. Every notebook can be deleted. First install no longer creates a fake “General note”. Delete the last remaining note. Pin individual notes.
+            10. **Search and tags** — Search notes, notebooks, and tags. Move checklist items or a whole note to another notebook.
+            11. **Recycle bin** — Restore deleted notes and notebooks.
+            12. **Write** — Markdown preview. Undo and redo. Counter notes with colored +/− buttons. Uncheck all, collapse checked items, and sort each checklist on its own.
+            13. **About licences** — Third party licences include Gson, Markwon, and Kotlinx Serialization.
+            14. **Dark red theme** — Dark page, contrasting cards, red toolbar and status bar. Settings no longer closes on its own.
+            15. **Lock notes** — Lock a text note, checklist, or counter with fingerprint, pattern, or PIN. The card hides the preview and shows a lock in the lower-right.
+            16. **Encrypted exports** — Export with a password (AES) or as plain text. Locks are stripped in the backup so another phone can restore.
+            17. **Note cards** — Title plus 4 preview lines; each source line stays on one row and ellipsizes. Long-press a card to reorder.
+            18. **No nags** — No donation, rate, or “what’s new” popups.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

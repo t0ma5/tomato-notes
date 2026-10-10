@@ -17,11 +17,11 @@ Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold
 
 This fork is not affiliated with Simple Mobile Tools, Fossify or ZipoApps.
 
-APKs are published on [GitHub Releases](https://github.com/t0ma5/Simple-Notes/releases)
-- `Simple-Notes_<version>-FOSS-arm64-v8a.apk` (most phones)
-- `Simple-Notes_<version>-FOSS-armeabi-v7a.apk`
-- `Simple-Notes_<version>-FOSS-x86_64.apk` (emulators)
-- `Simple-Notes_<version>-FOSS-universal.apk` (all included)
+APKs are published on [GitHub Releases](https://github.com/t0ma5/tomato-notes/releases)
+- `Tomato-Notes_<version>-FOSS-arm64-v8a.apk` (most phones)
+- `Tomato-Notes_<version>-FOSS-armeabi-v7a.apk`
+- `Tomato-Notes_<version>-FOSS-x86_64.apk` (emulators)
+- `Tomato-Notes_<version>-FOSS-universal.apk` (all included)
 
 ## New features in this fork
 
@@ -41,25 +41,29 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 - Text notes with Markdown preview, checklists, and counter notes with colored +/− buttons.
 - Undo and redo. Paste as plain text; composing keyboards still work.
 - Checklists: uncheck all, collapse checked items, sort each list on its own.
+- **Print** — If the print page fails to load, a toast reports the error.
+- **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
 
 **Home screen**
 - Notes widgets and a notebook widget. Customize widget colors once; every widget updates.
 
 **No nags**
-- No donation, rate, or “what’s new” popups. Own app ID (`tomato.simple.notes`) so it can sit next to Simple Notes Pro.
+- No donation, rate, or “what’s new” popups. Own app ID (`tomato.notes`) so it can sit next to Simple Notes Pro.
 
 ## Build
 
 Release APKs come from `assembleCoreRelease` (local and GitHub Actions). Names:
 
-- `Simple-Notes_<version>-FOSS-arm64-v8a.apk`
-- `Simple-Notes_<version>-FOSS-armeabi-v7a.apk`
-- `Simple-Notes_<version>-FOSS-x86_64.apk`
-- `Simple-Notes_<version>-FOSS-universal.apk`
+- `Tomato-Notes_<version>-FOSS-arm64-v8a.apk`
+- `Tomato-Notes_<version>-FOSS-armeabi-v7a.apk`
+- `Tomato-Notes_<version>-FOSS-x86_64.apk`
+- `Tomato-Notes_<version>-FOSS-universal.apk`
 
 | Item | Value |
 | --- | --- |
-| App version | 6.18.0 (versionCode 124) |
+| App ID | `tomato.notes` |
+| GitHub repo | [t0ma5/tomato-notes](https://github.com/t0ma5/tomato-notes) |
+| App version | 1.0 (versionCode 100) |
 | minSdk | 23 |
 | targetSdk / compileSdk | 36 (Android 16) |
 | JVM bytecode | 17 |

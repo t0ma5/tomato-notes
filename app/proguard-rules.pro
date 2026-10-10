@@ -1,4 +1,4 @@
--keep class tomato.simple.notes.models.* {
+-keep class tomato.notes.models.* {
     <fields>;
 }
 

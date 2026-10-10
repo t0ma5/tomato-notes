@@ -1,6 +1,15 @@
 Changelog
 ==========
 
+Version 1.0 *(2026-10-10)*
+----------------------------
+
+ * Application id is tomato.notes (versionCode 100). This does not update installs of tomato.simple.notes
+ * About name is Tomato Notes. Launcher name stays Notes. Version line shows 1.0 and the current month
+ * Release APKs are named `Tomato-Notes_<version>-FOSS-<abi>.apk`
+ * Print shows an error if the page fails to load
+ * Add and rename checklist dialogs keep their text across rotation
+
 Version 6.18.0 *(2026-09-13)*
 ----------------------------
 

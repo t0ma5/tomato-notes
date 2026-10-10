@@ -312,7 +312,7 @@ def main() -> None:
         [
             (
                 'launchViewIntent("https://github.com/SimpleMobileTools")',
-                'launchViewIntent("https://github.com/t0ma5/Simple-Notes")',
+                'launchViewIntent("https://github.com/t0ma5/tomato-notes")',
             ),
             (
                 """    private fun onVersionClick() {
@@ -333,7 +333,7 @@ def main() -> None:
     }
 """,
                 """    private fun onVersionClick() {
-        launchViewIntent("https://github.com/t0ma5/Simple-Notes/releases")
+        launchViewIntent("https://github.com/t0ma5/tomato-notes/releases")
     }
 """,
             ),
