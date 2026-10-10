@@ -44,7 +44,6 @@ class SettingsActivity : SimpleActivity() {
     override fun onResume() {
         super.onResume()
         setupPrimaryToolbar(binding.settingsToolbar, NavigationIcon.Arrow)
-        showFakeVersionWarning()
 
         setupCustomizeColors()
         setupUseEnglish()
