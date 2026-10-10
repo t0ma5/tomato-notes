@@ -1,10 +1,10 @@
 # Simple Notes
 
+<img alt="Logo" src="graphics/icon.png" width="120" />
+
 Fully open source notes app with no ads, tracking or unnecessary permissions. Tons of cool features and customizable colors, encrypted exports and no internet access required, made with privacy and simplicity in mind.
 
 Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold to a shady company named ZipoApps in 2023. I forked it to keep it alive, FOSS and updated. This fork is not affiliated with Simple Mobile Tools, Fossify, or ZipoApps. Code contributions are very welcome :)
-
-<img alt="Logo" src="graphics/icon.png" width="120" />
 
 <div style="display:flex; gap:8px; flex-wrap:wrap;">
 <img alt="Notes" src="graphics/screenshots/screenshot-notes.png" width="22%">
