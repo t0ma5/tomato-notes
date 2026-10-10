@@ -1,5 +1,9 @@
 # Simple Notes
 
+Fully open source notes app with no ads, tracking or unnecessary permissions. Tons of cool features and customizable colors, encrypted exports and no internet access required, made with privacy and simplicity in mind.
+
+Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold to a shady company named ZipoApps in 2023. I forked it to keep it alive, FOSS and updated. This fork is not affiliated with Simple Mobile Tools, Fossify, or ZipoApps. Code contributions are very welcome :)
+
 <img alt="Logo" src="graphics/icon.png" width="120" />
 
 <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -8,14 +12,6 @@
 <img alt="Inside notebook" src="graphics/screenshots/screenshot-inside-notebook.png" width="22%">
 <img alt="Customize Widgets HomeScreen" src="graphics/screenshots/screenshot-home-widgets.png" width="22%">
 </div>
-
-No ads or unnecessary permissions. It is fully open source and provides customizable colors. The lack of internet access and encrypted exports gives you more privacy than typical note apps.
-
-## History
-
-Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold to a shady Israeli company named ZipoApps in 2023. I forked it to keep it alive, FOSS and updated. I will release new versions as long as I have time and energy. Code contributions on Github are very welcome :)
-
-This fork is not affiliated with Simple Mobile Tools, Fossify or ZipoApps.
 
 APKs are published on [GitHub Releases](https://github.com/t0ma5/tomato-notes/releases)
 - `Tomato-Notes_<version>-FOSS-arm64-v8a.apk` (most phones)
@@ -41,6 +37,7 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 - Text notes with Markdown preview, checklists, and counter notes with colored +/− buttons.
 - Undo and redo. Paste as plain text; composing keyboards still work.
 - Checklists: uncheck all, collapse checked items, sort each list on its own.
+- **Checklist export** — Settings export writes checklist items in the order you see, including custom order and done items at the bottom. Import keeps that order.
 - **Print** — If the print page fails to load, a toast reports the error.
 - **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
 

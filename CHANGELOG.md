@@ -9,10 +9,7 @@ Version 1.0 *(2026-10-10)*
  * Release APKs are named `Tomato-Notes_<version>-FOSS-<abi>.apk`
  * Print shows an error if the page fails to load
  * Add and rename checklist dialogs keep their text across rotation
-
-Version 6.18.0 *(2026-09-13)*
-----------------------------
-
+ * Settings export writes checklist items in the on-screen order. Import keeps that order
  * Keep the toolbar below the phone status bar on Android 15+
  * Default Dark red theme: dark (not black) page, contrasting cards, red status bar
  * Notes is a two-column card grid by default; the toolbar icon switches to notebooks

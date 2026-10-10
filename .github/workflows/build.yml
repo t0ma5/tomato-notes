@@ -113,8 +113,6 @@ jobs:
 
             ## New in 1.0
 
-            New app id `tomato.notes` (versionCode 100). It does not update installs of `tomato.simple.notes`. About name is Tomato Notes. Launcher stays Notes.
-
             1. **Print** — If the print page fails to load, a toast reports the error.
             2. **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
             3. **Read-only notes** — Overflow Make read-only / Allow editing. Blocks typing, checklist checks, and counter buttons. Survives app restart.
@@ -133,5 +131,6 @@ jobs:
             16. **Encrypted exports** — Export with a password (AES) or as plain text. Locks are stripped in the backup so another phone can restore.
             17. **Note cards** — Title plus 4 preview lines; each source line stays on one row and ellipsizes. Long-press a card to reorder.
             18. **No nags** — No donation, rate, or “what’s new” popups.
+            19. **Checklist export** — Settings → Export notes writes checklist items in the order on screen (custom, title, date, or done, and done items at the bottom). Import keeps that order.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

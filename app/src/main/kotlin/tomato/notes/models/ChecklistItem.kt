@@ -30,6 +30,14 @@ data class ChecklistItem(
             }
             return result
         }
+
+        fun displayOrder(items: List<ChecklistItem>, sorting: Int, moveDoneToBottom: Boolean): List<ChecklistItem> {
+            val ordered = sorted(items.filter { it.title != null }, sorting, moveDoneToBottom)
+            if (sorting and SORT_BY_CUSTOM != 0 && moveDoneToBottom) {
+                return ordered.filter { !it.isDone } + ordered.filter { it.isDone }
+            }
+            return ordered
+        }
     }
 
     fun isSectionHeader() = id == CHECKED_ITEMS_TITLE_ID

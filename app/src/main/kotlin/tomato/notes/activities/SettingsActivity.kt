@@ -44,6 +44,7 @@ class SettingsActivity : SimpleActivity() {
     override fun onResume() {
         super.onResume()
         setupPrimaryToolbar(binding.settingsToolbar, NavigationIcon.Arrow)
+        showFakeVersionWarning()
 
         setupCustomizeColors()
         setupUseEnglish()
@@ -404,10 +405,12 @@ class SettingsActivity : SimpleActivity() {
         try {
             var notes: List<Note>
             var notebooks: List<Notebook> = emptyList()
+            var checklistSorting: List<Int?> = emptyList()
             try {
                 val backupData = Json.decodeFromString<BackupData>(jsonString)
                 notes = backupData.notes
                 notebooks = backupData.notebooks
+                checklistSorting = backupData.checklistSorting
                 backupData.settings?.let { settings ->
                     config.autosaveNotes = settings.autosaveNotes
                     config.displaySuccess = settings.displaySuccess
@@ -434,7 +437,7 @@ class SettingsActivity : SimpleActivity() {
                 toast(com.simplemobiletools.commons.R.string.no_entries_for_importing)
                 return
             }
-            NotesHelper(this).importNotes(this, notes, notebooks) { importResult ->
+            NotesHelper(this).importNotes(this, notes, notebooks, checklistSorting) { importResult ->
                 when (importResult) {
                     NotesHelper.ImportResult.IMPORT_OK -> toast(com.simplemobiletools.commons.R.string.importing_successful)
                     NotesHelper.ImportResult.IMPORT_PARTIAL -> toast(com.simplemobiletools.commons.R.string.importing_some_entries_failed)

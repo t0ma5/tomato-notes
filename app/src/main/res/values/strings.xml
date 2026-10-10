@@ -4,7 +4,7 @@
     <string name="app_launcher_name">Notes</string>
     <string name="about_footer"></string>
     <string name="history">History</string>
-    <string name="about_history_text">Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold to a shady Israeli company named ZipoApps in 2023. I forked it to keep it alive, FOSS and updated. I will release new versions as long as I have time and energy. Code contributions on Github are very welcome :)</string>
+    <string name="about_history_text">Fully open source notes app with no ads, tracking or unnecessary permissions. Tons of cool features and customizable colors, encrypted exports and no internet access required, made with privacy and simplicity in mind. Simple-Notes (GPL-3.0) was my favorite FOSS notes app until the project was sold to a shady company named ZipoApps in 2023. I forked it to keep it alive, FOSS and updated.</string>
     <string name="markdown_preview">Markdown preview</string>
     <string name="edit_note">Edit</string>
     <string name="make_read_only">Make read-only</string>

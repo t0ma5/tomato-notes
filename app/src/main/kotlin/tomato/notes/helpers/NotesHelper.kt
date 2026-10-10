@@ -3,6 +3,8 @@ package tomato.notes.helpers
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.helpers.ExportResult
 import com.simplemobiletools.commons.helpers.PROTECTION_NONE
@@ -11,6 +13,7 @@ import tomato.notes.R
 import tomato.notes.extensions.config
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.notebooksDB
+import tomato.notes.models.ChecklistItem
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
 import tomato.notes.models.NoteType
@@ -130,7 +133,13 @@ class NotesHelper(val context: Context) {
         }
     }
 
-    fun importNotes(activity: BaseSimpleActivity, notes: List<Note>, notebooks: List<Notebook> = emptyList(), callback: (ImportResult) -> Unit) {
+    fun importNotes(
+        activity: BaseSimpleActivity,
+        notes: List<Note>,
+        notebooks: List<Notebook> = emptyList(),
+        checklistSorting: List<Int?> = emptyList(),
+        callback: (ImportResult) -> Unit
+    ) {
         ensureBackgroundThread {
             // Update or create notebooks from backup to restore pinned status and sort order
             if (notebooks.isNotEmpty()) {
@@ -158,7 +167,8 @@ class NotesHelper(val context: Context) {
             var imported = 0
             var skipped = 0
 
-            notes.forEach { note ->
+            notes.forEachIndexed { index, note ->
+                val sorting = checklistSorting.getOrNull(index)
                 // we need to reset the ID to avoid overwriting existing notes with the same ID
                 note.id = null
                 if (note.sortOrder <= 0) {
@@ -190,6 +200,7 @@ class NotesHelper(val context: Context) {
                 if (existingNoteId != null) {
                     val existingNote = activity.notesDB.getNoteWithId(existingNoteId)
                     if (existingNote != null && existingNote.value == note.value) {
+                        saveImportedChecklistSorting(activity, existingNoteId, note, sorting)
                         skipped++
                     } else {
                         // Duplicate title but different content -> Rename and import
@@ -200,11 +211,13 @@ class NotesHelper(val context: Context) {
                             i++
                         }
                         note.title = newTitle
-                        activity.notesDB.insertOrUpdate(note)
+                        val newId = activity.notesDB.insertOrUpdate(note)
+                        saveImportedChecklistSorting(activity, newId, note, sorting)
                         imported++
                     }
                 } else {
-                    activity.notesDB.insertOrUpdate(note)
+                    val newId = activity.notesDB.insertOrUpdate(note)
+                    saveImportedChecklistSorting(activity, newId, note, sorting)
                     imported++
                 }
             }
@@ -222,14 +235,19 @@ class NotesHelper(val context: Context) {
         return try {
             val notebooks = context.notebooksDB.getNotebooks()
             val notebooksById = notebooks.associateBy { it.id }
+            val config = context.config
+            val checklistSorting = ArrayList<Int?>(notesToBackup.size)
             val exportNotes = notesToBackup.map { note ->
+                val sorting = if (note.type == NoteType.TYPE_CHECKLIST) config.getChecklistSorting(note.id) else null
+                checklistSorting.add(sorting)
                 note.copy(protectionType = PROTECTION_NONE, protectionHash = "").also { copy ->
                     copy.notebookTitle = notebooksById[note.notebookId]?.title
+                    if (sorting != null) {
+                        copy.value = checklistValueInDisplayOrder(note.value, sorting, config.moveDoneChecklistItems)
+                    }
                 }
             }
             val exportNotebooks = notebooks.map { it.copy(protectionType = PROTECTION_NONE, protectionHash = "") }
-
-            val config = context.config
             val settings = BackupSettings(
                 autosaveNotes = config.autosaveNotes,
                 displaySuccess = config.displaySuccess,
@@ -248,7 +266,7 @@ class NotesHelper(val context: Context) {
                 addNewChecklistItemsTop = config.addNewChecklistItemsTop,
                 notebookColumns = config.notebookColumns
             )
-            val backupData = BackupData(exportNotes, exportNotebooks, settings)
+            val backupData = BackupData(exportNotes, exportNotebooks, settings, checklistSorting)
 
             val jsonString = Json.encodeToString(backupData)
             val payload = if (!password.isNullOrEmpty()) {
@@ -262,6 +280,27 @@ class NotesHelper(val context: Context) {
             ExportResult.EXPORT_OK
         } catch (e: Exception) {
             ExportResult.EXPORT_FAIL
+        }
+    }
+
+    private fun saveImportedChecklistSorting(activity: BaseSimpleActivity, noteId: Long, note: Note, sorting: Int?) {
+        if (note.type == NoteType.TYPE_CHECKLIST && sorting != null) {
+            activity.config.saveChecklistSorting(noteId, sorting)
+        }
+    }
+
+    private fun checklistValueInDisplayOrder(raw: String, sorting: Int, moveDoneToBottom: Boolean): String {
+        return try {
+            val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
+            val items = Gson().fromJson<List<ChecklistItem>>(raw, checklistItemType) ?: return raw
+            val ordered = ChecklistItem.displayOrder(items, sorting, moveDoneToBottom)
+            if (items.map { it.id } == ordered.map { it.id }) {
+                raw
+            } else {
+                Gson().toJson(ordered)
+            }
+        } catch (e: Exception) {
+            raw
         }
     }
 

@@ -6,7 +6,8 @@ import kotlinx.serialization.Serializable
 data class BackupData(
     val notes: List<Note>,
     val notebooks: List<Notebook> = emptyList(),
-    val settings: BackupSettings? = null
+    val settings: BackupSettings? = null,
+    val checklistSorting: List<Int?> = emptyList()
 )
 
 @Serializable
