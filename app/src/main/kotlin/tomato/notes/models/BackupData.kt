@@ -7,7 +7,9 @@ data class BackupData(
     val notes: List<Note>,
     val notebooks: List<Notebook> = emptyList(),
     val settings: BackupSettings? = null,
-    val checklistSorting: List<Int?> = emptyList()
+    val checklistSorting: List<Int?> = emptyList(),
+    // Per note: checklist item ids in the stored (custom) order when the exported value was rewritten to on-screen order
+    val checklistItemOrder: List<List<Int>?> = emptyList()
 )
 
 @Serializable

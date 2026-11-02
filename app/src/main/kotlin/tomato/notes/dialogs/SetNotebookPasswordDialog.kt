@@ -6,6 +6,7 @@ import com.simplemobiletools.commons.extensions.getAlertDialogBuilder
 import com.simplemobiletools.commons.extensions.setupDialogStuff
 import com.simplemobiletools.commons.extensions.showKeyboard
 import com.simplemobiletools.commons.extensions.toast
+import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
 import tomato.notes.databinding.DialogSetNotebookPasswordBinding
 import tomato.notes.helpers.NotebookPasswordHasher
@@ -21,15 +22,26 @@ class SetNotebookPasswordDialog(val activity: Activity, callback: (hash: String)
             .apply {
                 activity.setupDialogStuff(view, this, R.string.lock_notebook) { alertDialog ->
                     alertDialog.showKeyboard(binding.password)
-                    alertDialog.getButton(BUTTON_POSITIVE).setOnClickListener {
+                    val positiveButton = alertDialog.getButton(BUTTON_POSITIVE)
+                    positiveButton.setOnClickListener {
                         val password = binding.password.text?.toString().orEmpty()
                         val confirm = binding.confirmPassword.text?.toString().orEmpty()
                         when {
                             password.isBlank() -> activity.toast(R.string.empty_password)
                             password != confirm -> activity.toast(R.string.passwords_do_not_match)
                             else -> {
-                                callback(NotebookPasswordHasher.createHash(password))
-                                alertDialog.dismiss()
+                                positiveButton.isEnabled = false
+                                // PBKDF2 is slow, keep it off the main thread
+                                ensureBackgroundThread {
+                                    val hash = NotebookPasswordHasher.createHash(password)
+                                    activity.runOnUiThread {
+                                        if (activity.isFinishing || activity.isDestroyed || !alertDialog.isShowing) {
+                                            return@runOnUiThread
+                                        }
+                                        callback(hash)
+                                        alertDialog.dismiss()
+                                    }
+                                }
                             }
                         }
                     }

@@ -211,7 +211,6 @@ class ChecklistAdapter(
     private fun moveSelectedItemsToBottom() {
         listener?.captureHistory()
         activity.config.saveChecklistSorting(noteId, SORT_BY_CUSTOM)
-        val movedPositions = mutableListOf<Int>()
         selectedKeys.forEach { checklistId ->
             val position = items.indexOfFirst { it.id == checklistId }
             if (position == -1 || items[position].isSectionHeader()) {
@@ -219,13 +218,13 @@ class ChecklistAdapter(
             }
             val tempItem = items[position]
             items.removeAt(position)
-            movedPositions.add(position)
-            items.add(items.size, tempItem)
+            // Unchecked items stay above the "Checked items" header, collapsed or not
+            val headerIndex = items.indexOfFirst { it.isSectionHeader() }
+            val target = if (headerIndex != -1 && !tempItem.isDone) headerIndex else items.size
+            items.add(target, tempItem)
+            notifyItemMoved(position, target)
         }
 
-        movedPositions.forEach {
-            notifyItemMoved(it, items.size - 1)
-        }
         listener?.onItemsReordered(items)
         listener?.saveChecklist()
     }

@@ -23,6 +23,7 @@ import tomato.notes.extensions.config
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.notebooksDB
 import tomato.notes.extensions.unlockNotebookIfNeeded
+import tomato.notes.extensions.updateWidgets
 import tomato.notes.helpers.OPEN_NEW_NOTE_DIALOG
 import tomato.notes.helpers.NOTEBOOK_ID
 import tomato.notes.helpers.NoteSearchHelper
@@ -46,6 +47,10 @@ class NotebooksActivity : SimpleActivity() {
         setContentView(binding.root)
 
         updateMaterialActivityViews(binding.notebooksCoordinator, null, useTransparentNavigation = true, useTopSearchMenu = false)
+        binding.searchResultsList.clipToPadding = false
+        applyBottomInsetsAsPadding(binding.notebooksList)
+        applyBottomInsetsAsPadding(binding.searchResultsList)
+        applyBottomInsetsAsMargin(binding.newNotebookFab)
 
         binding.notebooksToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
@@ -154,7 +159,6 @@ class NotebooksActivity : SimpleActivity() {
 
     private fun refreshNotebooks() {
         ensureBackgroundThread {
-            NotesHelper(this).cleanupPlaceholderNotesSync()
             val notebooks = notebooksDB.getNotebooks()
             val counts = notesDB.getNotes().groupingBy { it.notebookId }.eachCount()
             runOnUiThread {
@@ -290,6 +294,7 @@ class NotebooksActivity : SimpleActivity() {
                     notebook.protectionType = type
                     NotebooksHelper(this).insertOrUpdateNotebook(notebook) {
                         refreshNotebooks()
+                        updateWidgets()
                     }
                 }
             }
@@ -297,7 +302,7 @@ class NotebooksActivity : SimpleActivity() {
     }
 
     private fun unlockNotebook(notebook: Notebook) {
-        unlockNotebookIfNeeded(notebook) {
+        unlockNotebookIfNeeded(notebook, force = true) {
             removeProtection(notebook)
         }
     }
@@ -307,6 +312,7 @@ class NotebooksActivity : SimpleActivity() {
         notebook.protectionType = PROTECTION_NONE
         NotebooksHelper(this).insertOrUpdateNotebook(notebook) {
             refreshNotebooks()
+            updateWidgets()
         }
     }
 

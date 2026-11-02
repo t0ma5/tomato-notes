@@ -15,7 +15,6 @@ import tomato.notes.interfaces.WidgetsDao
 import tomato.notes.models.Notebook
 import tomato.notes.models.Note
 import tomato.notes.models.Widget
-import java.util.concurrent.Executors
 
 @Database(entities = [Note::class, Notebook::class, Widget::class], version = 10, exportSchema = true)
 abstract class NotesDatabase : RoomDatabase() {
@@ -27,6 +26,7 @@ abstract class NotesDatabase : RoomDatabase() {
     abstract fun WidgetsDao(): WidgetsDao
 
     companion object {
+        @Volatile
         private var db: NotesDatabase? = null
         private var defaultWidgetBgColor = 0
 
@@ -39,7 +39,7 @@ abstract class NotesDatabase : RoomDatabase() {
                             .addCallback(object : Callback() {
                                 override fun onCreate(db: SupportSQLiteDatabase) {
                                     super.onCreate(db)
-                                    insertFirstNote(context)
+                                    insertFirstNotebook(db, context)
                                 }
                             })
                             .addMigrations(MIGRATION_1_2)
@@ -59,18 +59,16 @@ abstract class NotesDatabase : RoomDatabase() {
             return db!!
         }
 
-        fun destroyInstance() {
-            db = null
-        }
+        // No-op: the singleton lives for the whole process; dropping it would leak an open connection and race new readers
+        fun destroyInstance() {}
 
-        private fun insertFirstNote(context: Context) {
-            Executors.newSingleThreadScheduledExecutor().execute {
-                val defaultNotebookTitle = context.getString(R.string.app_launcher_name)
-                db!!.openHelper.writableDatabase.execSQL(
-                    "INSERT OR IGNORE INTO notebooks(id, title, protection_type, protection_hash, pinned, sort_order) VALUES(1, ?, $PROTECTION_NONE, '', 0, 0)",
-                    arrayOf(defaultNotebookTitle)
-                )
-            }
+        // Runs inside onCreate on the creating connection, so the default notebook exists before any query sees the db
+        private fun insertFirstNotebook(database: SupportSQLiteDatabase, context: Context) {
+            val defaultNotebookTitle = context.getString(R.string.app_launcher_name)
+            database.execSQL(
+                "INSERT OR IGNORE INTO notebooks(id, title, protection_type, protection_hash, pinned, sort_order) VALUES(1, ?, $PROTECTION_NONE, '', 0, 0)",
+                arrayOf<Any?>(defaultNotebookTitle)
+            )
         }
 
         private val MIGRATION_1_2 = object : Migration(1, 2) {

@@ -9,13 +9,13 @@ import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.util.TypedValue
-import android.widget.RemoteViews
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.simplemobiletools.commons.dialogs.ColorPickerDialog
 import com.simplemobiletools.commons.dialogs.RadioGroupDialog
 import com.simplemobiletools.commons.extensions.*
 import com.simplemobiletools.commons.helpers.IS_CUSTOMIZING_COLORS
+import com.simplemobiletools.commons.helpers.PROTECTION_FINGERPRINT
 import com.simplemobiletools.commons.helpers.PROTECTION_NONE
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import com.simplemobiletools.commons.models.RadioItem
@@ -25,12 +25,15 @@ import tomato.notes.adapters.CounterAdapter
 import tomato.notes.databinding.WidgetConfigBinding
 import tomato.notes.extensions.config
 import tomato.notes.extensions.getPercentageFontSize
+import tomato.notes.extensions.notebooksDB
+import tomato.notes.extensions.unlockNotebookIfNeeded
 import tomato.notes.extensions.updateWidgets
 import tomato.notes.extensions.widgetsDB
 import tomato.notes.helpers.*
 import tomato.notes.models.ChecklistItem
 import tomato.notes.models.CounterItem
 import tomato.notes.models.Note
+import tomato.notes.models.Notebook
 import tomato.notes.models.NoteType
 import tomato.notes.models.Widget
 
@@ -44,6 +47,7 @@ class WidgetConfigureActivity : SimpleActivity() {
     private var mIsCustomizingColors = false
     private var mShowTitle = false
     private var mNotes = listOf<Note>()
+    private var mNotebooks = mapOf<Long?, Notebook>()
     private var mAllWidgetIds = intArrayOf()
     private val binding by viewBinding(WidgetConfigBinding::inflate)
 
@@ -58,6 +62,7 @@ class WidgetConfigureActivity : SimpleActivity() {
 
         if (mWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID && !mIsCustomizingColors) {
             finish()
+            return
         }
 
         updateTextColors(binding.notesPickerHolder)
@@ -115,26 +120,50 @@ class WidgetConfigureActivity : SimpleActivity() {
         binding.notesPickerHolder.beVisibleIf(!mIsCustomizingColors)
         binding.textNoteViewTitle.beGoneIf(!mShowTitle)
 
-        NotesHelper(this).getNotes {
-            mNotes = it
-            binding.notesPickerHolder.beVisibleIf(mNotes.size > 1 && !mIsCustomizingColors)
-            var note = mNotes.firstOrNull { !it.isLocked() }
-
-            if (mNotes.size == 1 && note == null) {
-                note = mNotes.first()
-                if (note.shouldBeUnlocked(this)) {
-                    updateCurrentNote(note)
-                } else {
-                    performSecurityCheck(
-                        protectionType = note.protectionType,
-                        requiredHash = note.protectionHash,
-                        successCallback = { _, _ -> updateCurrentNote(note) },
-                        failureCallback = { finish() }
-                    )
+        NotesHelper(this).getNotes { notes ->
+            ensureBackgroundThread {
+                val notebooks = notebooksDB.getNotebooks().associateBy { it.id }
+                runOnUiThread {
+                    mNotes = notes
+                    mNotebooks = notebooks
+                    onNotesLoaded()
                 }
-            } else if (note != null) {
-                updateCurrentNote(note)
             }
+        }
+    }
+
+    private fun onNotesLoaded() {
+        binding.notesPickerHolder.beVisibleIf(mNotes.size > 1 && !mIsCustomizingColors)
+        val note = mNotes.firstOrNull { !it.isLocked() && NotebookUnlockSession.canShow(mNotebooks[it.notebookId]) }
+
+        if (mNotes.size == 1 && note == null) {
+            unlockAndShowNote(mNotes.first()) { finish() }
+        } else if (note != null) {
+            updateCurrentNote(note)
+        }
+    }
+
+    // The preview shows the note's content, so both the notebook lock and the note lock must be passed first
+    private fun unlockAndShowNote(note: Note, failureCallback: (() -> Unit)? = null) {
+        val notebook = mNotebooks[note.notebookId]
+        val showNote = {
+            if (note.protectionType == PROTECTION_NONE || note.shouldBeUnlocked(this)) {
+                updateCurrentNote(note)
+            } else {
+                performSecurityCheck(
+                    protectionType = note.protectionType,
+                    requiredHash = note.protectionHash,
+                    successCallback = { _, _ -> updateCurrentNote(note) },
+                    // The commons biometric prompt reports each misread finger as a failure, so don't close on it
+                    failureCallback = if (note.protectionType == PROTECTION_FINGERPRINT) null else failureCallback
+                )
+            }
+        }
+
+        if (NotebookUnlockSession.canShow(notebook)) {
+            showNote()
+        } else {
+            unlockNotebookIfNeeded(notebook, onCancel = { failureCallback?.invoke() }) { showNote() }
         }
     }
 
@@ -147,15 +176,7 @@ class WidgetConfigureActivity : SimpleActivity() {
         RadioGroupDialog(this, items, mCurrentNoteId.toInt()) {
             val selectedId = it as Int
             val note = mNotes.firstOrNull { it.id!!.toInt() == selectedId } ?: return@RadioGroupDialog
-            if (note.protectionType == PROTECTION_NONE || note.shouldBeUnlocked(this)) {
-                updateCurrentNote(note)
-            } else {
-                performSecurityCheck(
-                    protectionType = note.protectionType,
-                    requiredHash = note.protectionHash,
-                    successCallback = { _, _ -> updateCurrentNote(note) }
-                )
-            }
+            unlockAndShowNote(note)
         }
     }
 
@@ -165,7 +186,11 @@ class WidgetConfigureActivity : SimpleActivity() {
         binding.textNoteViewTitle.text = note.title
         if (note.type == NoteType.TYPE_CHECKLIST) {
             val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-            val items = Gson().fromJson<ArrayList<ChecklistItem>>(note.value, checklistItemType) ?: ArrayList(1)
+            val items = try {
+                Gson().fromJson<ArrayList<ChecklistItem>>(note.value, checklistItemType)?.filter { it.title != null }?.let { ArrayList(it) }
+            } catch (e: Exception) {
+                null
+            } ?: ArrayList(1)
             items.apply {
                 if (isEmpty()) {
                     add(ChecklistItem(0, System.currentTimeMillis(), "Milk", true))
@@ -184,7 +209,11 @@ class WidgetConfigureActivity : SimpleActivity() {
             binding.checklistNoteView.beVisible()
         } else if (note.type == NoteType.TYPE_COUNTER) {
             val counterItemType = object : TypeToken<List<CounterItem>>() {}.type
-            val items = Gson().fromJson<ArrayList<CounterItem>>(note.value, counterItemType) ?: ArrayList(1)
+            val items = try {
+                Gson().fromJson<ArrayList<CounterItem>>(note.value, counterItemType)?.filter { it.title != null }?.let { ArrayList(it) }
+            } catch (e: Exception) {
+                null
+            } ?: ArrayList(1)
             items.apply {
                 if (isEmpty()) {
                     add(CounterItem(0, System.currentTimeMillis(), "Coffee", 3))
@@ -233,23 +262,20 @@ class WidgetConfigureActivity : SimpleActivity() {
             return
         }
 
-        val views = RemoteViews(packageName, R.layout.activity_main)
-        views.setBackgroundColor(R.id.text_note_view, mBgColor)
-        views.setBackgroundColor(R.id.checklist_note_view, mBgColor)
-        AppWidgetManager.getInstance(this)?.updateAppWidget(mWidgetId, views) ?: return
-
         val extras = intent.extras
         val id = if (extras?.containsKey(CUSTOMIZED_WIDGET_KEY_ID) == true) extras.getLong(CUSTOMIZED_WIDGET_KEY_ID) else null
         mWidgetId = extras?.getInt(CUSTOMIZED_WIDGET_ID, mWidgetId) ?: mWidgetId
         mCurrentNoteId = extras?.getLong(CUSTOMIZED_WIDGET_NOTE_ID, mCurrentNoteId) ?: mCurrentNoteId
         val widget = Widget(id, mWidgetId, mCurrentNoteId, mBgColor, mTextColor, mShowTitle)
+        // The widget provider reads the row, so only ask for an update once it is stored
         ensureBackgroundThread {
             widgetsDB.insertOrUpdate(widget)
+            runOnUiThread {
+                storeWidgetBackground()
+                requestWidgetUpdate()
+                finishWithResult()
+            }
         }
-
-        storeWidgetBackground()
-        requestWidgetUpdate()
-        finishWithResult()
     }
 
     private fun finishWithResult() {

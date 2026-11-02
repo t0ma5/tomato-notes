@@ -9,7 +9,6 @@ import android.widget.TextView
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.simplemobiletools.commons.extensions.*
-import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
 import tomato.notes.activities.MainActivity
 import tomato.notes.activities.SimpleActivity
@@ -76,7 +75,8 @@ class ChecklistFragment : NoteFragment(), ChecklistItemsListener {
     }
 
     private fun loadNoteById(noteId: Long) {
-        NotesHelper(requireActivity()).getNoteWithId(noteId) { storedNote ->
+        val ctx = context ?: return
+        NotesHelper(ctx.applicationContext).getNoteWithId(noteId) { storedNote ->
             if (storedNote != null && activity?.isDestroyed == false) {
                 note = storedNote
 
@@ -301,10 +301,13 @@ class ChecklistFragment : NoteFragment(), ChecklistItemsListener {
 
             note!!.value = getChecklistItems()
 
-            ensureBackgroundThread {
-                saveNoteValue(note!!, note!!.value)
-                context?.updateWidgets()
-                activity?.runOnUiThread(callback)
+            // saveNoteValue writes the DB in the background itself, file exports must start on the main thread
+            val appContext = requireContext().applicationContext
+            saveNoteValue(note!!, note!!.value) {
+                appContext.updateWidgets()
+                if (activity?.isFinishing == false) {
+                    callback()
+                }
             }
         }
     }
@@ -383,9 +386,15 @@ class ChecklistFragment : NoteFragment(), ChecklistItemsListener {
     override fun isRedoAvailable() = itemsHistory.canRedo()
 
     private fun applySnapshot(json: String) {
-        applyingHistory = true
         val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-        items = Gson().fromJson<ArrayList<ChecklistItem>>(json, checklistItemType) ?: ArrayList(1)
+        // a corrupt snapshot is ignored rather than wiping the list
+        val snapshot = try {
+            Gson().fromJson<ArrayList<ChecklistItem>>(json, checklistItemType) ?: ArrayList(1)
+        } catch (e: Exception) {
+            return
+        }
+        applyingHistory = true
+        items = snapshot
         items = persistedItems()
         setupAdapter()
         saveNote()
@@ -394,35 +403,41 @@ class ChecklistFragment : NoteFragment(), ChecklistItemsListener {
     }
 
     override fun refreshItems() {
+        if (!::binding.isInitialized) {
+            return
+        }
         loadNoteById(noteId)
         setupAdapter()
     }
 
     override fun migrateChecklistItems(itemIds: List<Int>) {
-        MigrateChecklistItemsDialog(requireActivity() as SimpleActivity, noteId) { targetNoteId ->
+        val activity = activity as? SimpleActivity ?: return
+        MigrateChecklistItemsDialog(activity, noteId) { targetNoteId ->
             performMigration(itemIds, targetNoteId)
         }
     }
 
     override fun moveEntireNote() {
-        (requireActivity() as? MainActivity)?.let { mainActivity ->
+        (activity as? MainActivity)?.let { mainActivity ->
             // Delegate to the main activity's move note to notebook functionality
             mainActivity.onMoveNoteRequested()
         }
     }
 
     private fun performMigration(itemIds: List<Int>, targetNoteId: Long) {
-            val itemsToMigrate = persistedItems().filter { it.id in itemIds }
-        
-        NotesHelper(requireActivity()).getNoteWithId(targetNoteId) { targetNote ->
-            if (targetNote == null) {
+        val itemsToMigrate = persistedItems().filter { it.id in itemIds }
+        val appContext = context?.applicationContext ?: return
+
+        NotesHelper(appContext).getNoteWithId(targetNoteId) { targetNote ->
+            val activity = activity ?: return@getNoteWithId
+            if (targetNote == null || activity.isFinishing) {
                 return@getNoteWithId
             }
 
             // Get target note's current checklist items
             val targetItems = try {
                 val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-                Gson().fromJson<ArrayList<ChecklistItem>>(targetNote.getNoteStoredValue(requireActivity()), checklistItemType) ?: ArrayList(1)
+                Gson().fromJson<ArrayList<ChecklistItem>>(targetNote.getNoteStoredValue(activity), checklistItemType) ?: ArrayList(1)
             } catch (e: Exception) {
                 ArrayList(1)
             }
@@ -432,26 +447,24 @@ class ChecklistFragment : NoteFragment(), ChecklistItemsListener {
             var newId = maxTargetId + 1
 
             // Add migrated items to target note with new IDs
-            val migratedItems = itemsToMigrate.map { 
+            val migratedItems = itemsToMigrate.map {
                 ChecklistItem(newId++, it.dateCreated, it.title, it.isDone)
             }
             targetItems.addAll(migratedItems)
             targetNote.value = Gson().toJson(targetItems)
 
-            // Save target note
-            ensureBackgroundThread {
-                saveNoteValue(targetNote, targetNote.value)
-                
-                // Remove items from current note
-                activity?.runOnUiThread {
-                    captureHistory()
-                    items = persistedItems().filter { it.id !in itemIds }.toMutableList()
-                    saveNote()
-                    setupAdapter()
-                    context?.updateWidgets()
-                    activity?.toast(R.string.items_moved_successfully)
-                }
+            // Save target note, then make its page reload so a stale in-memory list can't overwrite the moved items
+            saveNoteValue(targetNote, targetNote.value) {
+                (this.activity as? MainActivity)?.refreshChecklistNote(targetNoteId)
             }
+
+            // Remove items from current note
+            captureHistory()
+            items = persistedItems().filter { it.id !in itemIds }.toMutableList()
+            saveNote()
+            setupAdapter()
+            appContext.updateWidgets()
+            activity.toast(R.string.items_moved_successfully)
         }
     }
 

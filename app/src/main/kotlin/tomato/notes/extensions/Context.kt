@@ -125,87 +125,100 @@ fun Context.cancelScheduledAutomaticBackup() {
     alarmManager.cancel(getAutomaticBackupIntent())
 }
 
-fun Context.checkAndBackupNotesOnBoot() {
+// onDone runs once on a background thread when nothing more is left to do, so receivers can finish goAsync()
+fun Context.checkAndBackupNotesOnBoot(onDone: (() -> Unit)? = null) {
     if (config.autoBackup) {
         val previousRealBackupTime = config.lastAutoBackupTime
         val previousScheduledBackupTime = getPreviousAutoBackupTime().millis
         val missedPreviousBackup = previousRealBackupTime < previousScheduledBackupTime
         if (missedPreviousBackup) {
             // device was probably off at the scheduled time so backup now
-            backupNotes()
+            backupNotes(onDone)
+            return
+        }
+    }
+    onDone?.invoke()
+}
+
+// onDone runs once on a background thread after the backup attempt, whatever its result
+fun Context.backupNotes(onDone: (() -> Unit)? = null) {
+    if (!isRPlus()) {
+        onDone?.invoke()
+        return
+    }
+
+    ensureBackgroundThread {
+        try {
+            backupNotesSync()
+        } catch (e: Exception) {
+            showErrorToast(e)
+            scheduleNextAutomaticBackup()
+        } finally {
+            onDone?.invoke()
         }
     }
 }
 
-fun Context.backupNotes() {
-    require(isRPlus())
-    ensureBackgroundThread {
-        val config = config
-        NotesHelper(this).getNotes { notesToBackup ->
-            if (notesToBackup.isEmpty()) {
-                toast(com.simplemobiletools.commons.R.string.no_entries_for_exporting)
-                config.lastAutoBackupTime = DateTime.now().millis
-                scheduleNextAutomaticBackup()
-                return@getNotes
-            }
-
-
-            val now = DateTime.now()
-            val year = now.year.toString()
-            val month = now.monthOfYear.ensureTwoDigits()
-            val day = now.dayOfMonth.ensureTwoDigits()
-            val hours = now.hourOfDay.ensureTwoDigits()
-            val minutes = now.minuteOfHour.ensureTwoDigits()
-            val seconds = now.secondOfMinute.ensureTwoDigits()
-
-            val filename = config.autoBackupFilename
-                .replace("%Y", year, false)
-                .replace("%M", month, false)
-                .replace("%D", day, false)
-                .replace("%h", hours, false)
-                .replace("%m", minutes, false)
-                .replace("%s", seconds, false)
-
-            val outputFolder = File(config.autoBackupFolder).apply {
-                mkdirs()
-            }
-
-            var exportFile = File(outputFolder, "$filename.json")
-            var exportFilePath = exportFile.absolutePath
-            val outputStream = try {
-                if (hasProperStoredFirstParentUri(exportFilePath)) {
-                    val exportFileUri = createDocumentUriUsingFirstParentTreeUri(exportFilePath)
-                    if (!getDoesFilePathExist(exportFilePath)) {
-                        createSAFFileSdk30(exportFilePath)
-                    }
-                    applicationContext.contentResolver.openOutputStream(exportFileUri, "wt") ?: FileOutputStream(exportFile)
-                } else {
-                    var num = 0
-                    while (getDoesFilePathExist(exportFilePath) && !exportFile.canWrite()) {
-                        num++
-                        exportFile = File(outputFolder, "${filename}_${num}.json")
-                        exportFilePath = exportFile.absolutePath
-                    }
-                    FileOutputStream(exportFile)
-                }
-            } catch (e: Exception) {
-                showErrorToast(e)
-                scheduleNextAutomaticBackup()
-                return@getNotes
-            }
-
-            val exportResult = try {
-                NotesHelper(this).exportNotes(notesToBackup, outputStream)
-            } catch (e: Exception) {
-                showErrorToast(e)
-            }
-
-            if (exportResult == ExportResult.EXPORT_FAIL) {
-                toast(com.simplemobiletools.commons.R.string.exporting_failed)
-            }
-
-            config.lastAutoBackupTime = DateTime.now().millis
-            scheduleNextAutomaticBackup()
-        }
+// Runs on a background thread: Room refuses main-thread queries and exportNotes reads notebooks
+private fun Context.backupNotesSync() {
+    val notesToBackup = NotesHelper(this).getNotesSync()
+    if (notesToBackup.isEmpty()) {
+        toast(com.simplemobiletools.commons.R.string.no_entries_for_exporting)
+        config.lastAutoBackupTime = DateTime.now().millis
+        scheduleNextAutomaticBackup()
+        return
     }
+
+    val now = DateTime.now()
+    val year = now.year.toString()
+    val month = now.monthOfYear.ensureTwoDigits()
+    val day = now.dayOfMonth.ensureTwoDigits()
+    val hours = now.hourOfDay.ensureTwoDigits()
+    val minutes = now.minuteOfHour.ensureTwoDigits()
+    val seconds = now.secondOfMinute.ensureTwoDigits()
+
+    val filename = config.autoBackupFilename
+        .replace("%Y", year, false)
+        .replace("%M", month, false)
+        .replace("%D", day, false)
+        .replace("%h", hours, false)
+        .replace("%m", minutes, false)
+        .replace("%s", seconds, false)
+
+    val outputFolder = File(config.autoBackupFolder).apply {
+        mkdirs()
+    }
+
+    var exportFile = File(outputFolder, "$filename.json")
+    var exportFilePath = exportFile.absolutePath
+    val outputStream = try {
+        if (hasProperStoredFirstParentUri(exportFilePath)) {
+            val exportFileUri = createDocumentUriUsingFirstParentTreeUri(exportFilePath)
+            if (!getDoesFilePathExist(exportFilePath)) {
+                createSAFFileSdk30(exportFilePath)
+            }
+            applicationContext.contentResolver.openOutputStream(exportFileUri, "wt") ?: FileOutputStream(exportFile)
+        } else {
+            var num = 0
+            while (getDoesFilePathExist(exportFilePath) && !exportFile.canWrite()) {
+                num++
+                exportFile = File(outputFolder, "${filename}_${num}.json")
+                exportFilePath = exportFile.absolutePath
+            }
+            FileOutputStream(exportFile)
+        }
+    } catch (e: Exception) {
+        showErrorToast(e)
+        scheduleNextAutomaticBackup()
+        return
+    }
+
+    // exportNotes closes the stream on every path
+    val exportResult = NotesHelper(this).exportNotes(notesToBackup, outputStream)
+    if (exportResult == ExportResult.EXPORT_OK) {
+        config.lastAutoBackupTime = DateTime.now().millis
+    } else {
+        toast(com.simplemobiletools.commons.R.string.exporting_failed)
+    }
+    scheduleNextAutomaticBackup()
 }

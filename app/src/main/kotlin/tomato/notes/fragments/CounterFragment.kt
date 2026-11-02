@@ -10,7 +10,6 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.simplemobiletools.commons.dialogs.ConfirmationDialog
 import com.simplemobiletools.commons.extensions.*
-import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
 import tomato.notes.activities.SimpleActivity
 import tomato.notes.adapters.CounterAdapter
@@ -231,10 +230,12 @@ class CounterFragment : NoteFragment() {
 
         note!!.value = Gson().toJson(items)
 
-        ensureBackgroundThread {
-            saveNoteValue(note!!, note!!.value)
-            context?.updateWidgets()
-            activity?.runOnUiThread(callback)
+        val appContext = requireContext().applicationContext
+        saveNoteValue(note!!, note!!.value) {
+            appContext.updateWidgets()
+            if (activity?.isFinishing == false) {
+                callback()
+            }
         }
     }
 
@@ -261,8 +262,14 @@ class CounterFragment : NoteFragment() {
     override fun isRedoAvailable() = itemsHistory.canRedo()
 
     private fun applySnapshot(json: String) {
+        // a corrupt snapshot is ignored rather than wiping the list
+        val snapshot = try {
+            Gson().fromJson<ArrayList<CounterItem>>(json, object : TypeToken<List<CounterItem>>() {}.type) ?: ArrayList(1)
+        } catch (e: Exception) {
+            return
+        }
         applyingHistory = true
-        items = Gson().fromJson<ArrayList<CounterItem>>(json, object : TypeToken<List<CounterItem>>() {}.type) ?: ArrayList(1)
+        items = snapshot
         setupAdapter()
         saveNote()
         applyingHistory = false

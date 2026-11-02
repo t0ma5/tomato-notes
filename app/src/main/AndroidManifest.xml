@@ -27,6 +27,7 @@
         android:label="@string/app_launcher_name"
         android:localeConfig="@xml/locale_config"
         android:roundIcon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
@@ -38,7 +39,7 @@
 
         <activity
             android:name=".activities.MainActivity"
-            android:configChanges="orientation"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask">
 
@@ -57,13 +58,13 @@
 
         <activity
             android:name=".activities.NotebooksActivity"
-            android:configChanges="orientation"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
             android:name=".activities.NotesListActivity"
-            android:configChanges="orientation"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="false" />
 
         <activity
@@ -105,6 +106,7 @@
         <activity
             android:name="com.simplemobiletools.commons.activities.CustomizationActivity"
             android:configChanges="orientation"
+            android:enableOnBackInvokedCallback="false"
             android:exported="false"
             android:label="@string/customize_colors"
             android:parentActivityName=".activities.SettingsActivity" />

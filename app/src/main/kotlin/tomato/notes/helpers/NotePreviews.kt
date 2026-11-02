@@ -31,8 +31,12 @@ fun Note.previewLines(context: Context): List<String> {
         NoteType.TYPE_COUNTER -> {
             val counterItemType = object : TypeToken<List<CounterItem>>() {}.type
             val rawValue = getNoteStoredValue(context)?.ifEmpty { "[]" } ?: "[]"
-            val items = Gson().fromJson<List<CounterItem>>(rawValue, counterItemType) ?: listOf()
-            items.map { "${it.title}: ${it.count}" }
+            val items = try {
+                Gson().fromJson<List<CounterItem>>(rawValue, counterItemType) ?: listOf()
+            } catch (e: Exception) {
+                listOf()
+            }
+            items.filter { it.title != null }.map { "${it.title}: ${it.count}" }
         }
     }
     return lines.take(PREVIEW_LINE_COUNT)
@@ -72,8 +76,12 @@ fun Note.previewText(context: Context): CharSequence? {
 
 private fun Note.checklistPreviewItems(context: Context): List<ChecklistItem> {
     val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-    var items = Gson().fromJson<List<ChecklistItem>>(getNoteStoredValue(context), checklistItemType) ?: listOf()
-    items = ChecklistItem.sorted(
+    var items = try {
+        Gson().fromJson<List<ChecklistItem>>(getNoteStoredValue(context), checklistItemType) ?: listOf()
+    } catch (e: Exception) {
+        listOf()
+    }
+    items = ChecklistItem.displayOrder(
         items.filter { it.title != null },
         context.config.getChecklistSorting(id),
         context.config.moveDoneChecklistItems

@@ -13,6 +13,7 @@ import com.simplemobiletools.commons.helpers.PROTECTION_NONE
 import tomato.notes.R
 import tomato.notes.adapters.MigrateNoteAdapter
 import tomato.notes.databinding.DialogMigrateNoteBinding
+import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.NotesHelper
 import tomato.notes.helpers.NotebooksHelper
 import tomato.notes.models.Note
@@ -32,7 +33,10 @@ class MigrateChecklistItemsDialog(
     init {
         NotebooksHelper(activity).getNotebooks { notebooks ->
             allNotebooks = notebooks.toMutableList()
-            NotesHelper(activity).getNotes { notes ->
+            val notebooksById = notebooks.associateBy { it.id }
+            NotesHelper(activity).getNotes { allStoredNotes ->
+                // Locked notes and notes in locked notebooks can't be picked as a target
+                val notes = allStoredNotes.filter { !it.isLocked() && NotebookUnlockSession.canShow(notebooksById[it.notebookId]) }
                 allNotes = if (requireChecklist) {
                     notes.filter { it.id != currentNoteId && it.type == NoteType.TYPE_CHECKLIST }.toMutableList()
                 } else {

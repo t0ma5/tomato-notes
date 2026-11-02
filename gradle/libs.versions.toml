@@ -24,6 +24,8 @@ app-version-appId = "tomato.notes"
 app-version-versionCode = "100"
 app-version-versionName = "1.0"
 markwon = "4.6.2"
+# Same version Simple-Commons uses; declared so the app can show its own biometric prompt
+androidx-biometricKtx = "1.2.0-alpha05"
 [libraries]
 #AndroidX
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "androidx-constraintlayout" }
@@ -37,6 +39,7 @@ simple-tools-commons = { module = "com.github.SimpleMobileTools:Simple-Commons",
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 markwon-core = { module = "io.noties.markwon:core", version.ref = "markwon" }
+androidx-biometric-ktx = { module = "androidx.biometric:biometric-ktx", version.ref = "androidx-biometricKtx" }
 [bundles]
 room = [
     "androidx-room-ktx",

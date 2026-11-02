@@ -46,11 +46,20 @@ import java.io.File
 // text history handling taken from https://gist.github.com/zeleven/0cfa738c1e8b65b23ff7df1fc30c9f7e
 class TextFragment : NoteFragment() {
     private val TEXT = "text"
+    private val PREVIEWING = "previewing"
 
     private var textHistory = TextHistory()
     private var isUndoOrRedo = false
-    private var skipTextUpdating = false
     private var isPreviewing = false
+
+    // Text restored after recreation or process death, applied once the note is loaded
+    private var restoredText: String? = null
+
+    // Stored note value the editor was last synced with, null until the first load
+    private var loadedText: String? = null
+
+    // Text appended (share intent) before the note was loaded
+    private var pendingAppend: String? = null
     private var noteId = 0L
     private var touchDownX = 0f
     private var moveXThreshold = 0      // make sure swiping across notes works well, do not swallow the gestures
@@ -58,13 +67,20 @@ class TextFragment : NoteFragment() {
     private lateinit var binding: FragmentTextBinding
     private lateinit var innerBinding: ViewBinding
     private lateinit var noteEditText: MyEditText
-    private val markwon by lazy { Markwon.create(requireContext()) }
+    // Created per view so it never holds on to a destroyed activity
+    private var markwon: Markwon? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         binding = FragmentTextBinding.inflate(inflater, container, false)
         noteId = requireArguments().getLong(NOTE_ID, 0L)
         moveXThreshold = resources.getDimension(com.simplemobiletools.commons.R.dimen.activity_margin).toInt()
-        retainInstance = true
+        markwon = null
+        if (savedInstanceState != null) {
+            if (savedInstanceState.containsKey(TEXT)) {
+                restoredText = savedInstanceState.getString(TEXT)
+            }
+            isPreviewing = savedInstanceState.getBoolean(PREVIEWING, false)
+        }
 
         innerBinding = if (config!!.enableLineWrap) {
             NoteViewStaticBinding.inflate(inflater, binding.notesRelativeLayout, true).apply {
@@ -76,6 +92,8 @@ class TextFragment : NoteFragment() {
             }
         }
         noteEditText.enforcePlainText()
+        // the text is saved by onSaveInstanceState below, so locked notes can be left out
+        noteEditText.isSaveEnabled = false
         if (config!!.clickableLinks) {
             noteEditText.apply {
                 linksClickable = true
@@ -97,8 +115,8 @@ class TextFragment : NoteFragment() {
     override fun onResume() {
         super.onResume()
 
-        NotesHelper(requireActivity()).getNoteWithId(noteId) {
-            if (it != null) {
+        NotesHelper(requireContext().applicationContext).getNoteWithId(noteId) {
+            if (it != null && view != null && activity != null) {
                 note = it
                 setupFragment()
             }
@@ -130,18 +148,24 @@ class TextFragment : NoteFragment() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        if (note != null) {
-            outState.putString(TEXT, getCurrentNoteViewText())
+        val currentNote = note
+        val text = when {
+            currentNote == null -> restoredText
+            // never keep a locked note's text in the saved state
+            currentNote.isLocked() -> null
+            restoredText != null -> restoredText
+            ::noteEditText.isInitialized -> getCurrentNoteViewText()
+            else -> null
         }
+        if (text != null) {
+            outState.putString(TEXT, text)
+        }
+        outState.putBoolean(PREVIEWING, isPreviewing)
     }
 
-    override fun onViewStateRestored(savedInstanceState: Bundle?) {
-        super.onViewStateRestored(savedInstanceState)
-        if (savedInstanceState != null && note != null && savedInstanceState.containsKey(TEXT)) {
-            skipTextUpdating = true
-            val newText = savedInstanceState.getString(TEXT) ?: ""
-            innerBinding.root.findViewById<TextView>(R.id.text_note_view).text = newText
-        }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        markwon = null
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -162,14 +186,35 @@ class TextFragment : NoteFragment() {
             highlightColor = adjustedPrimaryColor.adjustAlpha(.4f)
 
             gravity = config.getTextGravity()
-            if (text.toString() != fileContents) {
-                if (!skipTextUpdating) {
-                    removeTextWatcher()
-                    setText(fileContents)
-                    setTextWatcher()
-                }
-                skipTextUpdating = false
+
+            // Keep text the user typed but did not save (autosave off, or restored after process death),
+            // replace it only when the editor still shows what was loaded last time.
+            val currentText = text.toString()
+            val pendingText = restoredText
+            restoredText = null
+            val hasLocalEdits = loadedText != null && currentText != loadedText
+            val wantedText = when {
+                pendingText != null && !note!!.isLocked() -> pendingText
+                hasLocalEdits -> currentText
+                else -> fileContents
+            }
+            loadedText = fileContents
+
+            if (currentText != wantedText) {
+                removeTextWatcher()
+                setText(wantedText)
+                // the history described the replaced text, it can't be applied to the new one
+                textHistory = TextHistory()
+                setTextWatcher()
                 setSelection(if (config.placeCursorToEnd) text!!.length else 0)
+                if (isMenuVisible) {
+                    (activity as? MainActivity)?.currentNoteTextChanged(wantedText, isUndoAvailable(), isRedoAvailable())
+                }
+            }
+
+            pendingAppend?.let {
+                pendingAppend = null
+                append(it)
             }
 
             if (config.showKeyboard && isMenuVisible && !note!!.isReadOnly && (!note!!.isLocked() || shouldShowLockedContent)) {
@@ -220,9 +265,12 @@ class TextFragment : NoteFragment() {
     private fun setupKeyboardListener() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
             if (insets.isVisible(WindowInsetsCompat.Type.ime()) && ::noteEditText.isInitialized) {
-                noteEditText.post {
-                    noteEditText.bringPointIntoView(noteEditText.selectionEnd)
-                }
+                // wait for the activity to relayout with the keyboard padding before scrolling to the caret
+                noteEditText.postDelayed({
+                    if (view != null && noteEditText.hasFocus()) {
+                        noteEditText.bringPointIntoView(noteEditText.selectionEnd)
+                    }
+                }, KEYBOARD_SCROLL_DELAY)
             }
             insets
         }
@@ -272,6 +320,13 @@ class TextFragment : NoteFragment() {
 
     fun removeTextWatcher() = noteEditText.removeTextChangedListener(textWatcher)
 
+    // span changes don't reach the text watcher, so it can stay attached
+    fun clearSearchHighlights() {
+        if (::noteEditText.isInitialized) {
+            noteEditText.text?.clearBackgroundSpans()
+        }
+    }
+
     override fun checkLockState() {
         if (note == null) {
             return
@@ -307,13 +362,14 @@ class TextFragment : NoteFragment() {
         val text = getCurrentNoteViewText() ?: ""
         binding.notesMarkdownPreview.setTextColor(requireContext().getProperTextColor())
         binding.notesMarkdownPreview.setTextSize(TypedValue.COMPLEX_UNIT_PX, requireContext().getPercentageFontSize())
+        val markwon = markwon ?: Markwon.create(binding.notesMarkdownPreview.context).also { markwon = it }
         markwon.setMarkdown(binding.notesMarkdownPreview, text)
     }
 
     fun getNotesView() = noteEditText
 
     fun saveText(force: Boolean) {
-        if (note == null) {
+        if (note == null || !::noteEditText.isInitialized) {
             return
         }
 
@@ -333,12 +389,23 @@ class TextFragment : NoteFragment() {
         val oldText = note!!.getNoteStoredValue(requireContext())
         if (newText != null && (newText != oldText || force)) {
             note!!.value = newText
+            loadedText = newText
             saveNoteValue(note!!, newText)
             requireContext().updateWidgets()
         }
     }
 
-    fun hasUnsavedChanges() = note != null && getCurrentNoteViewText() != note!!.getNoteStoredValue(requireContext())
+    fun hasUnsavedChanges() = note != null && ::noteEditText.isInitialized && context != null &&
+        getCurrentNoteViewText() != note!!.getNoteStoredValue(requireContext())
+
+    // Appends now when the note is loaded, otherwise once it is
+    fun appendText(text: String) {
+        if (note == null || !::noteEditText.isInitialized) {
+            pendingAppend = (pendingAppend ?: "") + text
+        } else {
+            noteEditText.append(text)
+        }
+    }
 
     fun focusEditText() {
         noteEditText.requestFocus()
@@ -365,6 +432,7 @@ class TextFragment : NoteFragment() {
         try {
             text.replace(start, end, edit.before)
         } catch (e: Exception) {
+            isUndoOrRedo = false
             activity?.showErrorToast(e)
             return
         }
@@ -395,7 +463,13 @@ class TextFragment : NoteFragment() {
         val end = start + if (edit.before != null) edit.before.length else 0
 
         isUndoOrRedo = true
-        text.replace(start, end, edit.after)
+        try {
+            text.replace(start, end, edit.after)
+        } catch (e: Exception) {
+            isUndoOrRedo = false
+            activity?.showErrorToast(e)
+            return
+        }
         isUndoOrRedo = false
 
         for (o in text.getSpans(0, text.length, UnderlineSpan::class.java)) {
@@ -414,6 +488,8 @@ class TextFragment : NoteFragment() {
     override fun isUndoAvailable() = textHistory.position > 0
 
     override fun isRedoAvailable() = textHistory.position < textHistory.history.size
+
+    private val KEYBOARD_SCROLL_DELAY = 100L
 
     private var textWatcher: TextWatcher = object : TextWatcher {
         private var beforeChange: CharSequence? = null
@@ -435,7 +511,7 @@ class TextFragment : NoteFragment() {
         override fun afterTextChanged(editable: Editable) {
             val text = editable.toString()
             setWordCounter(text)
-            (activity as MainActivity).currentNoteTextChanged(text, isUndoAvailable(), isRedoAvailable())
+            (activity as? MainActivity)?.currentNoteTextChanged(text, isUndoAvailable(), isRedoAvailable())
         }
     }
 

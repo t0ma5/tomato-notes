@@ -23,6 +23,7 @@ import tomato.notes.models.Note
 import tomato.notes.models.Notebook
 import tomato.notes.models.Widget
 import tomato.notes.models.BackupData
+import tomato.notes.models.BackupSettings
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.util.Locale
@@ -357,6 +358,7 @@ class SettingsActivity : SimpleActivity() {
             toast(com.simplemobiletools.commons.R.string.no_entries_for_exporting)
         } else {
             ensureBackgroundThread {
+                // exportNotes closes the stream and runs the slow PBKDF2 key derivation here, off the main thread
                 val result = try {
                     val outputStream = contentResolver.openOutputStream(uri)!!
                     NotesHelper(this).exportNotes(notes, outputStream, password)
@@ -377,57 +379,54 @@ class SettingsActivity : SimpleActivity() {
     }
 
     private fun importNotes(uri: Uri) {
-        try {
-            val fileContent = contentResolver.openInputStream(uri)!!.use { inputStream ->
-                inputStream.bufferedReader().readText()
-            }
-
-            if (NotesEncryptionHelper.isPasswordEncrypted(fileContent)) {
-                BackupPasswordDialog(this, confirm = false, titleRes = R.string.import_notes) { password ->
-                    val jsonString = NotesEncryptionHelper.decrypt(fileContent, password)
-                    if (jsonString == null) {
-                        toast(R.string.wrong_password)
-                    } else {
-                        parseAndImport(jsonString)
-                    }
+        ensureBackgroundThread {
+            try {
+                val fileContent = contentResolver.openInputStream(uri)!!.use { inputStream ->
+                    inputStream.bufferedReader().readText()
                 }
-            } else {
-                val jsonString = NotesEncryptionHelper.decryptLegacy(fileContent) ?: fileContent
-                parseAndImport(jsonString)
+
+                when {
+                    NotesEncryptionHelper.isPasswordEncrypted(fileContent) -> runOnUiThread {
+                        if (isDestroyed || isFinishing) {
+                            return@runOnUiThread
+                        }
+                        BackupPasswordDialog(this, confirm = false, titleRes = R.string.import_notes) { password ->
+                            // PBKDF2 is slow, decrypt off the main thread
+                            ensureBackgroundThread {
+                                val jsonString = NotesEncryptionHelper.decrypt(fileContent, password)
+                                if (jsonString == null) {
+                                    toast(R.string.wrong_password)
+                                } else {
+                                    parseAndImport(jsonString)
+                                }
+                            }
+                        }
+                    }
+
+                    NotesEncryptionHelper.isUnsupportedEncryption(fileContent) -> toast(R.string.unsupported_encrypted_backup)
+                    else -> parseAndImport(fileContent)
+                }
+            } catch (e: Exception) {
+                showErrorToast(e)
             }
-        } catch (e: Exception) {
-            showErrorToast(e)
         }
     }
 
+    // Runs on a background thread
     private fun parseAndImport(jsonString: String) {
         try {
             var notes: List<Note>
             var notebooks: List<Notebook> = emptyList()
             var checklistSorting: List<Int?> = emptyList()
+            var checklistItemOrder: List<List<Int>?> = emptyList()
+            var settings: BackupSettings? = null
             try {
                 val backupData = Json.decodeFromString<BackupData>(jsonString)
                 notes = backupData.notes
                 notebooks = backupData.notebooks
                 checklistSorting = backupData.checklistSorting
-                backupData.settings?.let { settings ->
-                    config.autosaveNotes = settings.autosaveNotes
-                    config.displaySuccess = settings.displaySuccess
-                    config.clickableLinks = settings.clickableLinks
-                    config.monospacedFont = settings.monospacedFont
-                    config.showKeyboard = settings.showKeyboard
-                    config.showNotePicker = settings.showNotePicker
-                    config.showWordCount = settings.showWordCount
-                    config.gravity = settings.gravity
-                    config.placeCursorToEnd = settings.placeCursorToEnd
-                    config.enableLineWrap = settings.enableLineWrap
-                    config.useIncognitoMode = settings.useIncognitoMode
-                    config.lastCreatedNoteType = settings.lastCreatedNoteType
-                    config.moveDoneChecklistItems = settings.moveDoneChecklistItems
-                    config.fontSizePercentage = settings.fontSizePercentage
-                    config.addNewChecklistItemsTop = settings.addNewChecklistItemsTop
-                    config.notebookColumns = settings.notebookColumns
-                }
+                checklistItemOrder = backupData.checklistItemOrder
+                settings = backupData.settings
             } catch (e: Exception) {
                 notes = Json.decodeFromString<List<Note>>(jsonString)
             }
@@ -436,7 +435,11 @@ class SettingsActivity : SimpleActivity() {
                 toast(com.simplemobiletools.commons.R.string.no_entries_for_importing)
                 return
             }
-            NotesHelper(this).importNotes(this, notes, notebooks, checklistSorting) { importResult ->
+            NotesHelper(this).importNotes(this, notes, notebooks, checklistSorting, checklistItemOrder) { importResult ->
+                // Settings change only once the notes made it in
+                if (importResult != NotesHelper.ImportResult.IMPORT_FAIL) {
+                    settings?.let { applyImportedSettings(it) }
+                }
                 when (importResult) {
                     NotesHelper.ImportResult.IMPORT_OK -> toast(com.simplemobiletools.commons.R.string.importing_successful)
                     NotesHelper.ImportResult.IMPORT_PARTIAL -> toast(com.simplemobiletools.commons.R.string.importing_some_entries_failed)
@@ -451,6 +454,25 @@ class SettingsActivity : SimpleActivity() {
         } catch (e: Exception) {
             showErrorToast(e)
         }
+    }
+
+    private fun applyImportedSettings(settings: BackupSettings) {
+        config.autosaveNotes = settings.autosaveNotes
+        config.displaySuccess = settings.displaySuccess
+        config.clickableLinks = settings.clickableLinks
+        config.monospacedFont = settings.monospacedFont
+        config.showKeyboard = settings.showKeyboard
+        config.showNotePicker = settings.showNotePicker
+        config.showWordCount = settings.showWordCount
+        config.gravity = settings.gravity
+        config.placeCursorToEnd = settings.placeCursorToEnd
+        config.enableLineWrap = settings.enableLineWrap
+        config.useIncognitoMode = settings.useIncognitoMode
+        config.lastCreatedNoteType = settings.lastCreatedNoteType
+        config.moveDoneChecklistItems = settings.moveDoneChecklistItems
+        config.fontSizePercentage = settings.fontSizePercentage
+        config.addNewChecklistItemsTop = settings.addNewChecklistItemsTop
+        config.notebookColumns = settings.notebookColumns
     }
 
     private fun setupEnableAutomaticBackups() {

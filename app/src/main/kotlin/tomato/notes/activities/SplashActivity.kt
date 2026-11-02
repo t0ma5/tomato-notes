@@ -8,16 +8,19 @@ import tomato.notes.helpers.OPEN_NOTE_ID
 
 class SplashActivity : BaseSplashActivity() {
     override fun initActivity() {
+        // widgets send 0 when their note or notebook was deleted, open the app normally then
+        val noteId = intent.getLongExtra(OPEN_NOTE_ID, -1L)
+        val notebookId = intent.getLongExtra(NOTEBOOK_ID, 0L)
         when {
-            intent.extras?.containsKey(OPEN_NOTE_ID) == true -> {
+            noteId > 0L -> {
                 Intent(this, MainActivity::class.java).apply {
-                    putExtra(OPEN_NOTE_ID, intent.getLongExtra(OPEN_NOTE_ID, -1L))
+                    putExtra(OPEN_NOTE_ID, noteId)
                     startActivity(this)
                 }
             }
-            intent.extras?.containsKey(NOTEBOOK_ID) == true -> {
+            notebookId > 0L -> {
                 Intent(this, NotesListActivity::class.java).apply {
-                    putExtra(NOTEBOOK_ID, intent.getLongExtra(NOTEBOOK_ID, 0L))
+                    putExtra(NOTEBOOK_ID, notebookId)
                     startActivity(this)
                 }
             }

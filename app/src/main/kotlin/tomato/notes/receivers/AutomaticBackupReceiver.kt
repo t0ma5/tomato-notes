@@ -11,7 +11,22 @@ class AutomaticBackupReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakelock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "simplenotes:automaticbackupreceiver")
-        wakelock.acquire(3000)
-        context.backupNotes()
+        // The timeout is only a safety net, the lock is released as soon as the backup finishes
+        wakelock.acquire(60_000L)
+        // Keep the process alive until the background backup is done
+        val pendingResult = goAsync()
+        try {
+            context.backupNotes {
+                if (wakelock.isHeld) {
+                    wakelock.release()
+                }
+                pendingResult.finish()
+            }
+        } catch (e: Exception) {
+            if (wakelock.isHeld) {
+                wakelock.release()
+            }
+            pendingResult.finish()
+        }
     }
 }

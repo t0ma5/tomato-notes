@@ -6,6 +6,7 @@ import tomato.notes.R
 import tomato.notes.extensions.config
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.notebooksDB
+import tomato.notes.extensions.updateWidgets
 import tomato.notes.extensions.widgetsDB
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
@@ -15,12 +16,14 @@ class RecycleBinHelper(private val context: android.content.Context) {
         ensureBackgroundThread {
             val noteId = note.id
             if (noteId != null) {
+                // Widgets of a trashed note stay, showing a "deleted" state, so they come back on restore
                 if (context.config.useRecycleBin) {
                     context.notesDB.updateDeletedTs(noteId, System.currentTimeMillis())
                 } else {
                     context.notesDB.deleteNote(note)
+                    context.widgetsDB.deleteNoteWidgets(noteId)
                 }
-                context.widgetsDB.deleteNoteWidgets(noteId)
+                context.updateWidgets()
             }
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
@@ -32,10 +35,6 @@ class RecycleBinHelper(private val context: android.content.Context) {
             val notes = context.notesDB.getNotesInNotebook(notebookId)
             val now = System.currentTimeMillis()
             if (context.config.useRecycleBin) {
-                notes.forEach { note ->
-                    note.id?.let { context.widgetsDB.deleteNoteWidgets(it) }
-                }
-                context.widgetsDB.deleteNotebookWidgets(notebookId)
                 context.notesDB.markNotesDeletedInNotebook(notebookId, now)
                 context.notebooksDB.updateDeletedTs(notebookId, now)
             } else {
@@ -46,6 +45,7 @@ class RecycleBinHelper(private val context: android.content.Context) {
                 context.widgetsDB.deleteNotebookWidgets(notebookId)
                 context.notebooksDB.deleteNotebook(notebook)
             }
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
@@ -75,6 +75,7 @@ class RecycleBinHelper(private val context: android.content.Context) {
                 }
                 else -> context.notesDB.restoreNote(noteId)
             }
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
@@ -87,6 +88,7 @@ class RecycleBinHelper(private val context: android.content.Context) {
             if (deletedTs > 0L) {
                 context.notesDB.restoreNotesInNotebook(notebookId, deletedTs)
             }
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
@@ -94,6 +96,8 @@ class RecycleBinHelper(private val context: android.content.Context) {
     fun permanentlyDeleteNote(note: Note, callback: (() -> Unit)? = null) {
         ensureBackgroundThread {
             context.notesDB.deleteNote(note)
+            note.id?.let { context.widgetsDB.deleteNoteWidgets(it) }
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
@@ -101,16 +105,24 @@ class RecycleBinHelper(private val context: android.content.Context) {
     fun permanentlyDeleteNotebook(notebook: Notebook, callback: (() -> Unit)? = null) {
         ensureBackgroundThread {
             val notebookId = notebook.id ?: return@ensureBackgroundThread
+            deleteNoteWidgets(context.notesDB.getDeletedNotes().filter { it.notebookId == notebookId })
             context.notesDB.permanentlyDeleteNotesInNotebook(notebookId)
+            context.widgetsDB.deleteNotebookWidgets(notebookId)
             context.notebooksDB.deleteNotebook(notebook)
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
 
     fun emptyRecycleBin(callback: (() -> Unit)? = null) {
         ensureBackgroundThread {
+            deleteNoteWidgets(context.notesDB.getDeletedNotes())
+            context.notebooksDB.getDeletedNotebooks().forEach { notebook ->
+                notebook.id?.let { context.widgetsDB.deleteNotebookWidgets(it) }
+            }
             context.notesDB.permanentlyDeleteAllDeletedNotes()
             context.notebooksDB.permanentlyDeleteAllDeletedNotebooks()
+            context.updateWidgets()
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
         }
     }
@@ -118,9 +130,25 @@ class RecycleBinHelper(private val context: android.content.Context) {
     fun emptyOldItems(callback: (() -> Unit)? = null) {
         ensureBackgroundThread {
             val cutoff = System.currentTimeMillis() - RECYCLE_BIN_RETENTION_MS
+            val oldNotes = context.notesDB.getDeletedNotes().filter { it.deletedTs < cutoff }
+            val oldNotebooks = context.notebooksDB.getDeletedNotebooks().filter { it.deletedTs < cutoff }
+            deleteNoteWidgets(oldNotes)
+            oldNotebooks.forEach { notebook ->
+                notebook.id?.let { context.widgetsDB.deleteNotebookWidgets(it) }
+            }
             context.notesDB.permanentlyDeleteNotesOlderThan(cutoff)
             context.notebooksDB.permanentlyDeleteNotebooksOlderThan(cutoff)
+            if (oldNotes.isNotEmpty() || oldNotebooks.isNotEmpty()) {
+                context.updateWidgets()
+            }
             callback?.let { android.os.Handler(android.os.Looper.getMainLooper()).post(it) }
+        }
+    }
+
+    // Only for notes that are removed for good, trashed notes keep their widgets
+    private fun deleteNoteWidgets(notes: List<Note>) {
+        notes.forEach { note ->
+            note.id?.let { context.widgetsDB.deleteNoteWidgets(it) }
         }
     }
 

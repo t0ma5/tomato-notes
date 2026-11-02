@@ -15,6 +15,7 @@ import com.simplemobiletools.commons.helpers.WIDGET_TEXT_COLOR
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
 import tomato.notes.activities.SplashActivity
+import tomato.notes.extensions.config
 import tomato.notes.extensions.notebooksDB
 import tomato.notes.extensions.widgetsDB
 import tomato.notes.models.Widget
@@ -28,16 +29,21 @@ class NotebookWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(id, pendingIntent)
     }
 
+    private fun getMissingWidget(context: Context, widgetId: Int) =
+        Widget(null, widgetId, 0L, context.config.widgetBgColor, context.config.widgetTextColor, true)
+
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
         ensureBackgroundThread {
             for (widgetId in appWidgetIds) {
-                val widget = context.widgetsDB.getWidgetWithWidgetId(widgetId) ?: continue
-                if (!widget.isNotebookWidget()) {
+                // A widget without a stored row still gets drawn, showing the "deleted" state instead of stale content
+                val storedWidget = context.widgetsDB.getWidgetWithWidgetId(widgetId)
+                if (storedWidget != null && !storedWidget.isNotebookWidget()) {
                     continue
                 }
+                val widget = storedWidget ?: getMissingWidget(context, widgetId)
                 val views = RemoteViews(context.packageName, R.layout.widget)
-                val notebook = context.notebooksDB.getNotebookWithId(widget.notebookId)
+                val notebook = context.notebooksDB.getNotebookWithId(widget.notebookId)?.takeUnless { it.isDeleted() }
                 views.applyColorFilter(R.id.notes_widget_background, widget.widgetBgColor)
                 views.setTextColor(R.id.widget_note_title, widget.widgetTextColor)
                 views.setText(R.id.widget_note_title, notebook?.title ?: "")

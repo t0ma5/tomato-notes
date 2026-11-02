@@ -80,6 +80,7 @@
     <string name="empty_password">Password cannot be empty</string>
     <string name="passwords_do_not_match">Passwords do not match</string>
     <string name="wrong_password">Wrong password</string>
+    <string name="unsupported_encrypted_backup">This encrypted backup was made by an older app version and can no longer be opened</string>
     <string name="create_new_note">Create a new note</string>
     <string name="add_to_note">Add to note</string>
     <string name="unsaved_changes_warning">You have some unsaved changes. What do you want to do with them?</string>
@@ -165,6 +166,11 @@
     <!-- FAQ -->
     <string name="faq_1_title">How can I change the widgets color?</string>
     <string name="faq_1_text">In case you have only 1 active widget, you can either recreate it, or use the button in the app settings for customizing it. If you have multiple active widgets, the button in the app settings will not be available. As the app supports color customization per-widget, you will have to recreate the widget that you want to customize.</string>
+
+    <!-- Widgets -->
+    <string name="widget_locked_note">Locked note</string>
+    <string name="widget_note_unavailable">This note was deleted or moved to the Recycle bin.</string>
+    <string name="widget_notebook_unavailable">This notebook was deleted or moved to the Recycle bin.</string>
     <!--
         Haven't found some strings? There's more at
         https://github.com/SimpleMobileTools/Simple-Commons/tree/master/commons/src/main/res

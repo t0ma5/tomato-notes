@@ -13,6 +13,7 @@ import com.simplemobiletools.commons.extensions.getProperTextColor
 import tomato.notes.databinding.ItemNoteCardBinding
 import tomato.notes.extensions.applyNoteCardBackground
 import tomato.notes.extensions.getMutedTextColor
+import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.previewLines
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
@@ -43,9 +44,11 @@ class NotesListAdapter(
             noteCardBody.applyNoteCardBackground()
             noteCardTitle.text = note.title
             noteCardTitle.setTextColor(text)
-            val previewLines = note.previewLines(context)
+            // A locked notebook hides previews until it is unlocked in this session
+            val hidePreview = note.isLocked() || !NotebookUnlockSession.canShow(notebooksById[note.notebookId])
+            val previewLines = if (hidePreview) emptyList() else note.previewLines(context)
             val previewViews = listOf(noteCardPreview1, noteCardPreview2, noteCardPreview3, noteCardPreview4)
-            noteCardPreviewHolder.beGoneIf(previewLines.isEmpty() || note.isLocked())
+            noteCardPreviewHolder.beGoneIf(previewLines.isEmpty())
             previewViews.forEachIndexed { index, view ->
                 val line = previewLines.getOrNull(index)
                 view.beGoneIf(line.isNullOrBlank())

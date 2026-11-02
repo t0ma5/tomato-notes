@@ -17,7 +17,9 @@ import tomato.notes.R
 import tomato.notes.databinding.WidgetConfigBinding
 import tomato.notes.extensions.config
 import tomato.notes.extensions.getPercentageFontSize
+import tomato.notes.extensions.unlockNotebookIfNeeded
 import tomato.notes.extensions.widgetsDB
+import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.NotebookWidgetProvider
 import tomato.notes.helpers.NotesHelper
 import tomato.notes.models.Notebook
@@ -95,9 +97,11 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
 
         tomato.notes.helpers.NotebooksHelper(this).getNotebooks {
             mNotebooks = it
-            val notebook = mNotebooks.firstOrNull()
+            val notebook = mNotebooks.firstOrNull { notebook -> NotebookUnlockSession.canShow(notebook) }
             if (notebook != null) {
                 updateCurrentNotebook(notebook)
+            } else if (mNotebooks.size == 1) {
+                unlockAndShowNotebook(mNotebooks.first())
             }
         }
     }
@@ -110,7 +114,16 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
         RadioGroupDialog(this, items, mCurrentNotebookId.toInt()) {
             val selectedId = it as Int
             val notebook = mNotebooks.firstOrNull { notebook -> notebook.id!!.toInt() == selectedId } ?: return@RadioGroupDialog
+            unlockAndShowNotebook(notebook)
+        }
+    }
+
+    // The preview lists note titles, so a locked notebook must be unlocked first. The widget itself stays locked.
+    private fun unlockAndShowNotebook(notebook: Notebook) {
+        if (NotebookUnlockSession.canShow(notebook)) {
             updateCurrentNotebook(notebook)
+        } else {
+            unlockNotebookIfNeeded(notebook) { updateCurrentNotebook(notebook) }
         }
     }
 
@@ -119,7 +132,9 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
         binding.notesPickerValue.text = notebook.title
         binding.textNoteViewTitle.text = notebook.title
         NotesHelper(this).getNotesInNotebook(mCurrentNotebookId) { notes ->
-            val preview = notes.joinToString(separator = System.lineSeparator()) { it.title }.ifEmpty { getString(R.string.widget_config) }
+            val preview = notes.joinToString(separator = System.lineSeparator()) {
+                if (it.isLocked()) getString(R.string.widget_locked_note) else it.title
+            }.ifEmpty { getString(R.string.widget_config) }
             binding.textNoteView.text = preview
         }
     }
@@ -131,25 +146,27 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
         }
 
         val widget = Widget(null, mWidgetId, 0L, mBgColor, mTextColor, mShowTitle, mCurrentNotebookId)
-        ensureBackgroundThread {
-            widgetsDB.insertOrUpdate(widget)
-        }
-
         config.apply {
             widgetBgColor = mBgColor
             widgetTextColor = mTextColor
         }
 
-        Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE, null, this, NotebookWidgetProvider::class.java).apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(mWidgetId))
-            sendBroadcast(this)
-        }
+        // The widget provider reads the row, so only ask for an update once it is stored
+        ensureBackgroundThread {
+            widgetsDB.insertOrUpdate(widget)
+            runOnUiThread {
+                Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE, null, this, NotebookWidgetProvider::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(mWidgetId))
+                    sendBroadcast(this)
+                }
 
-        Intent().apply {
-            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, mWidgetId)
-            setResult(Activity.RESULT_OK, this)
+                Intent().apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, mWidgetId)
+                    setResult(Activity.RESULT_OK, this)
+                }
+                finish()
+            }
         }
-        finish()
     }
 
     private fun updateBackgroundColor() {

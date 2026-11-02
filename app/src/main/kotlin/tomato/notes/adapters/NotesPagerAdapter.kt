@@ -58,7 +58,7 @@ class NotesPagerAdapter(fm: FragmentManager, val notes: List<Note>, val activity
 
     fun getCurrentNoteViewText(position: Int) = (fragments[position] as? TextFragment)?.getCurrentNoteViewText()
 
-    fun appendText(position: Int, text: String) = (fragments[position] as? TextFragment)?.getNotesView()?.append(text)
+    fun appendText(position: Int, text: String) = (fragments[position] as? TextFragment)?.appendText(text)
 
     fun saveCurrentNote(position: Int, force: Boolean) = (fragments[position] as? TextFragment)?.saveText(force)
 
@@ -110,4 +110,6 @@ class NotesPagerAdapter(fm: FragmentManager, val notes: List<Note>, val activity
     fun refreshChecklist(position: Int) {
         (fragments[position] as? ChecklistFragment)?.refreshItems()
     }
+
+    fun getPosition(noteId: Long) = notes.indexOfFirst { it.id == noteId }
 }

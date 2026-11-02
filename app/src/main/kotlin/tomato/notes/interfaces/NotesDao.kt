@@ -62,55 +62,11 @@ interface NotesDao {
     @Query("DELETE FROM notes WHERE deleted_ts > 0")
     fun permanentlyDeleteAllDeletedNotes()
 
-    @Query("DELETE FROM notes WHERE notebook_id = :notebookId")
+    @Query("DELETE FROM notes WHERE notebook_id = :notebookId AND deleted_ts > 0")
     fun permanentlyDeleteNotesInNotebook(notebookId: Long)
 
     @Query("SELECT COUNT(*) FROM notes WHERE deleted_ts > 0")
     fun getDeletedNoteCount(): Int
-
-    @Query(
-        """
-        INSERT INTO notes (notebook_id, title, value, type, path, protection_type, protection_hash)
-        SELECT :notebookId, :title, :value, :type, :path, :protectionType, :protectionHash
-        WHERE NOT EXISTS (SELECT 1 FROM notes WHERE notebook_id = :notebookId AND deleted_ts = 0)
-        """
-    )
-    fun insertNoteIfNotebookEmpty(
-        notebookId: Long,
-        title: String,
-        value: String,
-        type: Int,
-        path: String,
-        protectionType: Int,
-        protectionHash: String
-    )
-
-    @Query(
-        """
-        DELETE FROM notes
-        WHERE notebook_id = :notebookId
-          AND title = :title COLLATE NOCASE
-          AND value = ''
-          AND path = ''
-          AND type = :type
-          AND deleted_ts = 0
-          AND id NOT IN (
-              SELECT MIN(id)
-              FROM notes
-              WHERE notebook_id = :notebookId
-                AND title = :title COLLATE NOCASE
-                AND value = ''
-                AND path = ''
-                AND type = :type
-                AND deleted_ts = 0
-          )
-        """
-    )
-    fun deleteDuplicateEmptyNotesInNotebook(
-        notebookId: Long,
-        title: String,
-        type: Int
-    )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insertOrUpdate(note: Note): Long

@@ -44,7 +44,8 @@ class NoteSearchHelper(private val context: Context) {
 
         context.notesDB.getNotes().forEach { note ->
             val notebook = notebooksById[note.notebookId]
-            if (notebook?.isLocked() == true && !note.title.lowercase().contains(needle) && !note.tags.lowercase().contains(needle)) {
+            // Notes in a locked notebook stay out of search, titles and tags included, until it is unlocked
+            if (!NotebookUnlockSession.canShow(notebook)) {
                 return@forEach
             }
 
@@ -70,7 +71,7 @@ class NoteSearchHelper(private val context: Context) {
         }
 
         val notebooksById = context.notebooksDB.getNotebooks().associateBy { it.id }
-        return context.notesDB.getNotes().filter { note ->
+        return getVisibleNotes(notebooksById).filter { note ->
             note.tagList().any { it.lowercase() == needle }
         }.map { note ->
             NoteSearchResult(
@@ -82,10 +83,15 @@ class NoteSearchHelper(private val context: Context) {
     }
 
     fun allTags(): List<String> {
-        return context.notesDB.getNotes()
+        val notebooksById = context.notebooksDB.getNotebooks().associateBy { it.id }
+        return getVisibleNotes(notebooksById)
             .flatMap { it.tagList() }
             .distinctBy { it.lowercase() }
             .sortedBy { it.lowercase() }
+    }
+
+    private fun getVisibleNotes(notebooksById: Map<Long?, Notebook>): List<Note> {
+        return context.notesDB.getNotes().filter { NotebookUnlockSession.canShow(notebooksById[it.notebookId]) }
     }
 
     private fun buildSearchableText(note: Note, includeBody: Boolean): String {

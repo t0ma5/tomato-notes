@@ -34,16 +34,23 @@ abstract class NoteFragment : Fragment() {
         }
     }
 
-    protected fun saveNoteValue(note: Note, content: String?) {
+    // Call on the main thread: the DB write runs in the background, file exports may show permission or SAF dialogs.
+    // onSaved runs on the main thread once the DB write is done, or right after the file export was started.
+    protected fun saveNoteValue(note: Note, content: String?, onSaved: (() -> Unit)? = null) {
+        val activity = activity ?: return
         if (note.path.isEmpty()) {
-            NotesHelper(requireActivity()).insertOrUpdateNote(note) {
-                (activity as? MainActivity)?.noteSavedSuccessfully(note.title)
+            NotesHelper(activity.applicationContext).insertOrUpdateNote(note) {
+                if (!activity.isFinishing && !activity.isDestroyed) {
+                    (activity as? MainActivity)?.noteSavedSuccessfully(note.title)
+                }
+                onSaved?.invoke()
             }
         } else {
-            if (content != null) {
-                val displaySuccess = activity?.config?.displaySuccess ?: false
+            if (content != null && !activity.isFinishing && !activity.isDestroyed) {
+                val displaySuccess = activity.config.displaySuccess
                 (activity as? MainActivity)?.tryExportNoteValueToFile(note.path, note.title, content, displaySuccess)
             }
+            onSaved?.invoke()
         }
     }
 
@@ -59,9 +66,21 @@ abstract class NoteFragment : Fragment() {
             successCallback = { _, _ ->
                 shouldShowLockedContent = true
                 checkLockState()
+                (activity as? MainActivity)?.updateSecureFlag()
                 callback?.invoke()
             }
         )
+    }
+
+    // Leaving the screen hides a locked note again, so coming back asks for authentication anew
+    override fun onStop() {
+        super.onStop()
+        if (shouldShowLockedContent) {
+            shouldShowLockedContent = false
+            if (view != null) {
+                checkLockState()
+            }
+        }
     }
 
     fun updateNoteValue(value: String) {

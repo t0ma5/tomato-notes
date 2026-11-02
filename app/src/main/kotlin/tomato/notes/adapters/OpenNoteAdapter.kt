@@ -92,8 +92,14 @@ class OpenNoteAdapter(
             NoteType.TYPE_TEXT -> getNoteStoredValue(context)
             NoteType.TYPE_CHECKLIST -> {
                 val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-                var items = Gson().fromJson<List<ChecklistItem>>(getNoteStoredValue(context), checklistItemType) ?: listOf()
-                items = ChecklistItem.sorted(
+                val rawValue = getNoteStoredValue(context)
+                var items = try {
+                    Gson().fromJson<List<ChecklistItem>>(rawValue, checklistItemType) ?: listOf()
+                } catch (e: Exception) {
+                    // Not a valid checklist, show what is stored instead of crashing
+                    return rawValue
+                }
+                items = ChecklistItem.displayOrder(
                     items.filter { it.title != null },
                     context.config.getChecklistSorting(id),
                     context.config.moveDoneChecklistItems
@@ -119,8 +125,12 @@ class OpenNoteAdapter(
             NoteType.TYPE_COUNTER -> {
                 val counterItemType = object : TypeToken<List<CounterItem>>() {}.type
                 val rawValue = getNoteStoredValue(context)?.ifEmpty { "[]" } ?: "[]"
-                val items = Gson().fromJson<List<CounterItem>>(rawValue, counterItemType) ?: listOf()
-                items.joinToString(separator = System.lineSeparator()) { "${it.title}: ${it.count}" }
+                val items = try {
+                    Gson().fromJson<List<CounterItem>>(rawValue, counterItemType) ?: listOf()
+                } catch (e: Exception) {
+                    return rawValue
+                }
+                items.filter { it.title != null }.joinToString(separator = System.lineSeparator()) { "${it.title}: ${it.count}" }
             }
         }
     }

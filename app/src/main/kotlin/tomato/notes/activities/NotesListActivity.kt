@@ -31,6 +31,7 @@ import tomato.notes.extensions.unlockNotebookIfNeeded
 import tomato.notes.helpers.NOTEBOOK_ID
 import tomato.notes.helpers.NoteSearchHelper
 import tomato.notes.helpers.NoteSearchResult
+import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.NotesHelper
 import tomato.notes.helpers.NotebooksHelper
 import tomato.notes.helpers.OPEN_NEW_NOTE_DIALOG
@@ -49,11 +50,20 @@ class NotesListActivity : SimpleActivity() {
     private var pendingNewNotePrompt = false
     private var notebooksById = emptyMap<Long, Notebook>()
 
+    // Notebook passed in NOTEBOOK_ID, its notes are listed only once its lock was passed
+    private var filterNotebook: Notebook? = null
+    private var isFilterNotebookUnlocked = false
+    private var isUnlockPromptShowing = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         isMaterialActivity = true
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
         updateMaterialActivityViews(binding.notesListCoordinator, null, useTransparentNavigation = true, useTopSearchMenu = false)
+        binding.searchResultsList.clipToPadding = false
+        applyBottomInsetsAsPadding(binding.notesList)
+        applyBottomInsetsAsPadding(binding.searchResultsList)
+        applyBottomInsetsAsMargin(binding.newNoteFab)
         applyIntent(intent)
 
         binding.notesListToolbar.setOnMenuItemClickListener { menuItem ->
@@ -144,7 +154,7 @@ class NotesListActivity : SimpleActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         applyIntent(intent)
-        refreshNotes()
+        // onResume follows and reloads the list once the notebook's lock (if any) was passed
     }
 
     override fun onResume() {
@@ -163,11 +173,13 @@ class NotesListActivity : SimpleActivity() {
             }
         }
         (binding.notesList.layoutManager as? GridLayoutManager)?.spanCount = config.notebookColumns
-        val shouldPrompt = pendingNewNotePrompt
-        pendingNewNotePrompt = false
-        refreshNotes {
-            if (shouldPrompt) {
-                promptNewNote()
+        ensureFilterNotebookUnlocked {
+            val shouldPrompt = pendingNewNotePrompt
+            pendingNewNotePrompt = false
+            refreshNotes {
+                if (shouldPrompt) {
+                    promptNewNote()
+                }
             }
         }
         RecycleBinHelper(this).emptyOldItems()
@@ -189,10 +201,72 @@ class NotesListActivity : SimpleActivity() {
     }
 
     private fun applyIntent(intent: Intent) {
-        filterNotebookId = intent.getLongExtra(NOTEBOOK_ID, 0L)
+        // the notebook widget may send 0 (or a negative id) when its notebook is gone, list all notes then
+        val newNotebookId = intent.getLongExtra(NOTEBOOK_ID, 0L).coerceAtLeast(0L)
+        if (newNotebookId != filterNotebookId) {
+            filterNotebookId = newNotebookId
+            filterNotebook = null
+            isFilterNotebookUnlocked = false
+            adapter?.updateItems(emptyList(), emptyMap(), showNotebook = filterNotebookId == 0L)
+        }
         pendingNewNotePrompt = intent.getBooleanExtra(OPEN_NEW_NOTE_DIALOG, false)
         intent.removeExtra(OPEN_NEW_NOTE_DIALOG)
     }
+
+    // Lists a locked notebook only after its lock was passed. An unlock earlier in this session (from the
+    // notebooks screen) counts; once the app went to the background it is asked again. Cancel closes the screen.
+    private fun ensureFilterNotebookUnlocked(onUnlocked: () -> Unit) {
+        val notebookId = filterNotebookId
+        if (notebookId <= 0L) {
+            setSecureContent(false)
+            onUnlocked()
+            return
+        }
+
+        NotebooksHelper(this).getNotebookWithId(notebookId) { notebook ->
+            if (isFinishing || isDestroyed || notebookId != filterNotebookId) {
+                return@getNotebookWithId
+            }
+
+            if (notebook == null) {
+                // deleted notebook, fall back to all notes
+                filterNotebookId = 0L
+                filterNotebook = null
+                isFilterNotebookUnlocked = false
+                setSecureContent(false)
+                onUnlocked()
+                return@getNotebookWithId
+            }
+
+            filterNotebook = notebook
+            setSecureContent(notebook.isLocked())
+            if (NotebookUnlockSession.canShow(notebook)) {
+                isFilterNotebookUnlocked = true
+                onUnlocked()
+                return@getNotebookWithId
+            }
+
+            isFilterNotebookUnlocked = false
+            adapter?.updateItems(emptyList(), emptyMap(), showNotebook = false)
+            if (searchVisible) {
+                toggleSearch()
+            }
+
+            if (!isUnlockPromptShowing) {
+                isUnlockPromptShowing = true
+                unlockNotebookIfNeeded(notebook, onCancel = {
+                    isUnlockPromptShowing = false
+                    finish()
+                }) {
+                    isUnlockPromptShowing = false
+                    isFilterNotebookUnlocked = true
+                    onUnlocked()
+                }
+            }
+        }
+    }
+
+    private fun canShowFilteredContent() = filterNotebookId <= 0L || isFilterNotebookUnlocked
 
     private fun switchToNotebooks() {
         if (searchVisible) {
@@ -205,8 +279,11 @@ class NotesListActivity : SimpleActivity() {
     }
 
     private fun refreshNotes(onDone: (() -> Unit)? = null) {
+        if (!canShowFilteredContent()) {
+            return
+        }
+
         ensureBackgroundThread {
-            NotesHelper(this).cleanupPlaceholderNotesSync()
             val notebooks = notebooksDB.getNotebooks()
             notebooksById = notebooks.associateBy { it.id ?: 0L }
             val notes = if (filterNotebookId > 0L) {
@@ -215,6 +292,9 @@ class NotesListActivity : SimpleActivity() {
                 notesDB.getNotes()
             }
             runOnUiThread {
+                if (!canShowFilteredContent()) {
+                    return@runOnUiThread
+                }
                 updateTitle()
                 adapter?.updateItems(notes, notebooksById, showNotebook = filterNotebookId == 0L)
                 onDone?.invoke()
@@ -308,6 +388,10 @@ class NotesListActivity : SimpleActivity() {
     }
 
     private fun filterByTag() {
+        if (!canShowFilteredContent()) {
+            return
+        }
+
         ensureBackgroundThread {
             val tags = NoteSearchHelper(this).allTags()
             runOnUiThread {
@@ -353,7 +437,7 @@ class NotesListActivity : SimpleActivity() {
     }
 
     private fun performSearch(query: String) {
-        if (!searchVisible || query.isBlank()) {
+        if (!searchVisible || query.isBlank() || !canShowFilteredContent()) {
             showNotesList()
             return
         }

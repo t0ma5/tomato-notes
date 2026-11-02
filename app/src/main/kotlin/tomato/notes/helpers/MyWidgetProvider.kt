@@ -15,6 +15,8 @@ import com.simplemobiletools.commons.helpers.WIDGET_TEXT_COLOR
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
 import tomato.notes.activities.SplashActivity
+import tomato.notes.extensions.config
+import tomato.notes.extensions.notebooksDB
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.widgetsDB
 import tomato.notes.models.Widget
@@ -28,19 +30,26 @@ class MyWidgetProvider : AppWidgetProvider() {
         views.setOnClickPendingIntent(id, pendingIntent)
     }
 
+    private fun getMissingWidget(context: Context, widgetId: Int) =
+        Widget(null, widgetId, 0L, context.config.widgetBgColor, context.config.widgetTextColor, false)
+
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         super.onUpdate(context, appWidgetManager, appWidgetIds)
         ensureBackgroundThread {
             for (widgetId in appWidgetIds) {
-                val widget = context.widgetsDB.getWidgetWithWidgetId(widgetId) ?: continue
+                // A widget without a stored row still gets drawn, showing the "deleted" state instead of stale content
+                val widget = context.widgetsDB.getWidgetWithWidgetId(widgetId) ?: getMissingWidget(context, widgetId)
                 if (widget.isNotebookWidget()) {
                     continue
                 }
                 val views = RemoteViews(context.packageName, R.layout.widget)
                 val note = context.notesDB.getNoteWithId(widget.noteId)?.takeUnless { it.isDeleted() }
+                // Titles of notes in a locked notebook stay hidden on the home screen
+                val notebook = note?.let { context.notebooksDB.getNotebookWithId(it.notebookId) }
+                val title = if (note == null || notebook?.isLocked() == true) "" else note.title
                 views.applyColorFilter(R.id.notes_widget_background, widget.widgetBgColor)
                 views.setTextColor(R.id.widget_note_title, widget.widgetTextColor)
-                views.setText(R.id.widget_note_title, note?.title ?: "")
+                views.setText(R.id.widget_note_title, title)
                 views.setVisibleIf(R.id.widget_note_title, widget.widgetShowTitle)
                 setupAppOpenIntent(context, views, R.id.notes_widget_holder, widget)
 

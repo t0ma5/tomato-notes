@@ -1,6 +1,24 @@
 Changelog
 ==========
 
+Unreleased
+----------------------------
+
+ * Automatic backups work again; they failed on every run and left an empty file. They also restart after a reboot
+ * Notes linked to a file are no longer deleted when the file can't be seen (SD card removed, storage permission)
+ * Empty notes titled "General note" are no longer deleted automatically
+ * Encrypted exports use AES-GCM with a stronger password key. Encrypted backups from 1.0 can't be imported; export again with the new version
+ * Notebook passwords are stored with a stronger hash. Existing passwords keep working and upgrade on the next unlock
+ * Locked notes and notebooks stay hidden on home-screen widgets, in previews, search, share targets, "Move items" and the recents screen
+ * Opening the app from a shortcut, widget or share asks for a locked notebook's password
+ * Widgets show a "deleted" state and come back when the note is restored; new widgets no longer start blank
+ * Widget checklists use the same order as the app and respect collapsed checked items
+ * Back gesture on Android 16 asks about unsaved changes and closes search again
+ * Note text and dialogs survive rotation; edits survive the app being killed in the background
+ * Content no longer sits under the gesture bar or keyboard on Android 15+
+ * Import runs as one step, so a failed import leaves nothing half done
+ * Fixed crashes from damaged checklist data, external "open" intents and redo after file changes
+
 Version 1.0 *(2026-10-10)*
 ----------------------------
 

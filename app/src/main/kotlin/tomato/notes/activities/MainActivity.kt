@@ -28,6 +28,7 @@ import android.webkit.WebViewClient
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.viewpager.widget.ViewPager
 import com.simplemobiletools.commons.dialogs.*
 import com.simplemobiletools.commons.extensions.*
@@ -37,7 +38,6 @@ import com.simplemobiletools.commons.models.RadioItem
 import com.simplemobiletools.commons.views.MyEditText
 import tomato.notes.R
 import tomato.notes.adapters.NotesPagerAdapter
-import tomato.notes.databases.NotesDatabase
 import tomato.notes.databinding.ActivityMainBinding
 import tomato.notes.dialogs.*
 import tomato.notes.extensions.*
@@ -45,6 +45,7 @@ import tomato.notes.fragments.TextFragment
 import tomato.notes.helpers.*
 import tomato.notes.models.Note
 import tomato.notes.models.NoteType
+import tomato.notes.models.Notebook
 import java.io.File
 import java.nio.charset.Charset
 import java.util.*
@@ -76,7 +77,21 @@ class MainActivity : SimpleActivity() {
     private var isSearchActive = false
 
     private var pendingFirstNotePrompt = false
-    private var shouldDeletePlaceholderAfterFirstRealNote = false
+
+    // The notebook whose notes are shown, null until its lock (if any) was passed
+    private var currentNotebook: Notebook? = null
+    private var isNotebookShown = false
+    private var isUnlockPromptShowing = false
+    // onShown actions of showNotebook calls that arrived while an unlock prompt was already open
+    private val pendingOnShown = mutableListOf<() -> Unit>()
+    private var lastSelectedPage = 0
+    private var pendingNotePicker = false
+
+    private val backPressedCallback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            onBackRequested()
+        }
+    }
 
     private lateinit var searchQueryET: MyEditText
     private lateinit var searchPrevBtn: ImageView
@@ -93,6 +108,8 @@ class MainActivity : SimpleActivity() {
         refreshMenuItems()
 
         updateMaterialActivityViews(binding.mainCoordinator, null, useTransparentNavigation = true, useTopSearchMenu = false)
+        applyBottomInsetsAsPadding(binding.mainLinearLayout)
+        onBackPressedDispatcher.addCallback(this, backPressedCallback)
 
         searchQueryET = findViewById(com.simplemobiletools.commons.R.id.search_query)
         searchPrevBtn = findViewById(com.simplemobiletools.commons.R.id.search_previous)
@@ -102,20 +119,21 @@ class MainActivity : SimpleActivity() {
         currentNotebookId = intent.getLongExtra(NOTEBOOK_ID, config.currentNotebookId).takeIf { it > 0L }
             ?: config.currentNotebookId
         pendingFirstNotePrompt = intent.getBooleanExtra(OPEN_NEW_NOTE_DIALOG, false)
-        shouldDeletePlaceholderAfterFirstRealNote = pendingFirstNotePrompt
 
-        val noteToOpen = intent.getLongExtra(OPEN_NOTE_ID, -1L)
+        // widgets send 0 when their note is gone, treat it like no note
+        val noteToOpen = intent.getLongExtra(OPEN_NOTE_ID, -1L).takeIf { it > 0L } ?: -1L
+        val hasNoIntent = intent.action.isNullOrEmpty() && noteToOpen == -1L
+        val launchIntent = intent
         if (noteToOpen > 0L) {
             NotesHelper(this).getNoteWithId(noteToOpen) { note ->
-                if (note != null) {
-                    currentNotebookId = note.notebookId
-                    config.currentNotebookId = currentNotebookId
+                showNotebook(note?.notebookId ?: currentNotebookId, if (note != null) noteToOpen else null) {
+                    checkIntents(launchIntent)
                 }
-                initViewPager(noteToOpen)
             }
         } else {
-            config.currentNotebookId = currentNotebookId
-            initViewPager(noteToOpen)
+            showNotebook(currentNotebookId, null) {
+                checkIntents(launchIntent)
+            }
         }
         binding.pagerTabStrip.drawFullUnderline = false
         val textSize = getPercentageFontSize()
@@ -124,13 +142,19 @@ class MainActivity : SimpleActivity() {
             (textSize + resources.getDimension(com.simplemobiletools.commons.R.dimen.medium_margin) * 2).toInt()
         (binding.pagerTabStrip.layoutParams as ViewPager.LayoutParams).isDecor = true
 
-        val hasNoIntent = intent.action.isNullOrEmpty() && noteToOpen == -1L
-
-        checkIntents(intent)
+        // registered once, they read the current mNotes / mAdapter
+        binding.viewPager.onPageChangeListener {
+            val note = mNotes.getOrNull(it) ?: return@onPageChangeListener
+            mCurrentNote = note
+            config.currentNoteId = note.id!!
+            applyReadOnlyStateToCurrentNote()
+            refreshMenuItems()
+            updateSecureFlag()
+        }
 
         storeStateVariables()
         if (config.showNotePicker && savedInstanceState == null && hasNoIntent) {
-            displayOpenNoteDialog()
+            pendingNotePicker = true
         }
 
         wasInit = true
@@ -141,15 +165,23 @@ class MainActivity : SimpleActivity() {
     override fun onResume() {
         super.onResume()
         setupPrimaryToolbar(binding.mainToolbar, if (isTaskRoot) NavigationIcon.None else NavigationIcon.Arrow)
-        if (storedEnableLineWrap != config.enableLineWrap) {
-            initViewPager()
-        }
+        if (isNotebookShown) {
+            if (!NotebookUnlockSession.canShow(currentNotebook)) {
+                // the app went to the background since the notebook was unlocked
+                relockCurrentNotebook()
+            } else {
+                if (storedEnableLineWrap != config.enableLineWrap) {
+                    initViewPager()
+                }
 
-        NotesHelper(this).getNotesInNotebook(currentNotebookId) { lastestNotes ->
-            if (mNotes.size != lastestNotes.size) {
-                initViewPager()
+                NotesHelper(this).getNotesInNotebook(currentNotebookId) { lastestNotes ->
+                    if (isNotebookShown && mNotes.size != lastestNotes.size) {
+                        initViewPager()
+                    }
+                }
             }
         }
+        updateSecureFlag()
 
         refreshMenuItems()
         binding.pagerTabStrip.apply {
@@ -179,13 +211,6 @@ class MainActivity : SimpleActivity() {
     override fun onPause() {
         super.onPause()
         storeStateVariables()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        if (!isChangingConfigurations) {
-            NotesDatabase.destroyInstance()
-        }
     }
 
     private fun refreshMenuItems() {
@@ -299,7 +324,8 @@ class MainActivity : SimpleActivity() {
         }
     }
 
-    override fun onBackPressed() {
+    // onBackPressed() isn't called with predictive back (targetSdk 36), so this runs from an OnBackPressedCallback
+    private fun onBackRequested() {
         if (isSearchActive) {
             closeSearch()
         } else if (!config.autosaveNotes && mAdapter?.anyHasUnsavedChanges() == true) {
@@ -313,7 +339,7 @@ class MainActivity : SimpleActivity() {
                 if (it) {
                     mAdapter?.saveAllFragmentTexts()
                 }
-                super.onBackPressed()
+                performDefaultBack()
             }
         } else {
             if (config.autosaveNotes && mAdapter?.anyHasUnsavedChanges() == true) {
@@ -322,36 +348,50 @@ class MainActivity : SimpleActivity() {
                     noteSavedSuccessfully(mCurrentNote.title)
                 }
             }
-            super.onBackPressed()
+            performDefaultBack()
         }
+    }
+
+    // Lets the system handle back (finish or move the task back), then re-arms our callback
+    private fun performDefaultBack() {
+        backPressedCallback.isEnabled = false
+        onBackPressedDispatcher.onBackPressed()
+        backPressedCallback.isEnabled = true
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val wantedNoteId = intent.getLongExtra(OPEN_NOTE_ID, -1L)
+        // widgets send 0 when their note or notebook is gone, treat it like none
+        val wantedNoteId = intent.getLongExtra(OPEN_NOTE_ID, -1L).takeIf { it > 0L } ?: -1L
         val wantedNotebookId = intent.getLongExtra(NOTEBOOK_ID, -1L)
         pendingFirstNotePrompt = intent.getBooleanExtra(OPEN_NEW_NOTE_DIALOG, false)
-        shouldDeletePlaceholderAfterFirstRealNote = pendingFirstNotePrompt
         if (wantedNoteId > 0L) {
             NotesHelper(this).getNoteWithId(wantedNoteId) { note ->
-                if (note != null && note.notebookId != currentNotebookId) {
-                    currentNotebookId = note.notebookId
-                    config.currentNotebookId = currentNotebookId
-                    initViewPager(wantedNoteId)
+                if (note != null && (note.notebookId != currentNotebookId || !isNotebookShown)) {
+                    showNotebook(note.notebookId, wantedNoteId) {
+                        checkIntents(intent)
+                    }
+                } else if (isNotebookShown) {
+                    binding.viewPager.currentItem = getWantedNoteIndex(if (note != null) wantedNoteId else null)
+                    checkIntents(intent)
                 } else {
-                    binding.viewPager.currentItem = getWantedNoteIndex(wantedNoteId)
+                    showNotebook(currentNotebookId, null) {
+                        checkIntents(intent)
+                    }
                 }
+            }
+        } else if (wantedNotebookId > 0L && (wantedNotebookId != currentNotebookId || !isNotebookShown)) {
+            showNotebook(wantedNotebookId, null) {
                 checkIntents(intent)
             }
-        } else if (wantedNotebookId > 0L && wantedNotebookId != currentNotebookId) {
-            currentNotebookId = wantedNotebookId
-            config.currentNotebookId = currentNotebookId
-            initViewPager()
+        } else if (isNotebookShown) {
+            binding.viewPager.currentItem = getWantedNoteIndex(null)
             checkIntents(intent)
         } else {
-            binding.viewPager.currentItem = getWantedNoteIndex(wantedNoteId)
-            checkIntents(intent)
+            showNotebook(currentNotebookId, null) {
+                checkIntents(intent)
+            }
         }
     }
 
@@ -464,7 +504,7 @@ class MainActivity : SimpleActivity() {
                         )
                         addNewNote(newChecklist)
                     } else {
-                        handleUri(data!!)
+                        data?.let(::handleUri)
                     }
                 }
                 intent.removeCategory(Intent.CATEGORY_DEFAULT)
@@ -483,7 +523,12 @@ class MainActivity : SimpleActivity() {
 
     private fun handleTextIntent(text: String) {
         NotesHelper(this).getNotesInNotebook(currentNotebookId) {
-            val notes = it
+            if (!isNotebookShown || !NotebookUnlockSession.canShow(currentNotebook)) {
+                return@getNotesInNotebook
+            }
+
+            // locked notes are offered only while unlocked on screen
+            val notes = it.filter { note -> !note.isLocked() || isNoteContentShown(note.id) }
 
             if (notes.isEmpty()) {
                 displayNewNoteDialog(value = text)
@@ -509,7 +554,8 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun handleUri(uri: Uri) {
-        NotesHelper(this).getNoteIdWithPath(uri.path!!) {
+        val path = uri.path ?: return
+        NotesHelper(this).getNoteIdWithPath(path) {
             if (it != null && it > 0L) {
                 updateSelectedNote(it)
                 return@getNoteIdWithPath
@@ -533,6 +579,11 @@ class MainActivity : SimpleActivity() {
                 binding.viewPager.adapter = mAdapter
                 hideKeyboard()
                 refreshMenuItems()
+                updateSecureFlag()
+                if (pendingFirstNotePrompt) {
+                    pendingFirstNotePrompt = false
+                    displayNewNoteDialog()
+                }
                 return@getNotesInNotebook
             }
 
@@ -542,13 +593,7 @@ class MainActivity : SimpleActivity() {
                 adapter = mAdapter
                 currentItem = getWantedNoteIndex(wantedNoteId)
                 config.currentNoteId = mCurrentNote.id!!
-
-                onPageChangeListener {
-                    mCurrentNote = mNotes[it]
-                    config.currentNoteId = mCurrentNote.id!!
-                    applyReadOnlyStateToCurrentNote()
-                    refreshMenuItems()
-                }
+                lastSelectedPage = currentItem
             }
 
             if (!config.showKeyboard || mCurrentNote.type == NoteType.TYPE_CHECKLIST || mCurrentNote.type == NoteType.TYPE_COUNTER || mCurrentNote.isReadOnly) {
@@ -556,32 +601,94 @@ class MainActivity : SimpleActivity() {
             }
             applyReadOnlyStateToCurrentNote()
             refreshMenuItems()
+            updateSecureFlag()
+            pendingFirstNotePrompt = false
+        }
+    }
 
-            if (pendingFirstNotePrompt && mNotes.size == 1 && isPlaceholderNote(mNotes[0])) {
-                pendingFirstNotePrompt = false
-                displayNewNoteDialog(cancelCallback = ::onFirstNoteDialogCanceled)
+    // Shows the notebook's notes only after its lock was passed. An unlock earlier in this session
+    // (in-app navigation that just prompted) counts, so the user isn't asked twice.
+    private fun showNotebook(notebookId: Long, wantedNoteId: Long?, onShown: (() -> Unit)? = null) {
+        NotebooksHelper(this).getNotebookWithId(notebookId) { notebook ->
+            if (isFinishing || isDestroyed) {
+                return@getNotebookWithId
+            }
+
+            val show = {
+                currentNotebookId = notebookId
+                currentNotebook = notebook
+                config.currentNotebookId = notebookId
+                isNotebookShown = true
+                binding.viewPager.beVisible()
+                initViewPager(wantedNoteId)
+                onShown?.invoke()
+                val pending = pendingOnShown.toList()
+                pendingOnShown.clear()
+                pending.forEach { it() }
+                if (pendingNotePicker) {
+                    pendingNotePicker = false
+                    displayOpenNoteDialog()
+                }
+            }
+
+            if (NotebookUnlockSession.canShow(notebook)) {
+                show()
+            } else if (isUnlockPromptShowing) {
+                onShown?.let { pendingOnShown.add(it) }
+            } else {
+                isUnlockPromptShowing = true
+                unlockNotebookIfNeeded(notebook, onCancel = {
+                    isUnlockPromptShowing = false
+                    pendingOnShown.clear()
+                    onNotebookUnlockCanceled()
+                }) {
+                    isUnlockPromptShowing = false
+                    show()
+                }
             }
         }
     }
 
-    private fun onFirstNoteDialogCanceled() {
-        if (mNotes.size == 1 && isPlaceholderNote(mNotes[0])) {
-            val placeholder = mNotes[0]
-            ensureBackgroundThread {
-                notesDB.deleteNote(placeholder)
-            }
+    // Nothing of the notebook was shown yet (or it was hidden again), so there is nothing to stay on
+    private fun onNotebookUnlockCanceled() {
+        if (!isNotebookShown) {
+            finish()
         }
-
-        shouldDeletePlaceholderAfterFirstRealNote = false
-        finish()
     }
 
-    private fun isPlaceholderNote(note: Note): Boolean {
-        return note.notebookId == currentNotebookId &&
-            note.title == getString(R.string.general_note) &&
-            note.value.isEmpty() &&
-            note.path.isEmpty() &&
-            note.type == NoteType.TYPE_TEXT
+    // Hides the current notebook's notes and asks for its lock again
+    private fun relockCurrentNotebook() {
+        if (isUnlockPromptShowing) {
+            return
+        }
+
+        if (config.autosaveNotes) {
+            mAdapter?.saveAllFragmentTexts()
+        }
+        isNotebookShown = false
+        hideKeyboard()
+        binding.viewPager.beInvisible()
+        showNotebook(currentNotebookId, if (::mCurrentNote.isInitialized) mCurrentNote.id else null)
+    }
+
+    private fun isNoteContentShown(noteId: Long?): Boolean {
+        val index = mNotes.indexOfFirst { it.id == noteId }
+        return index != -1 && mAdapter?.getFragment(index)?.shouldShowLockedContent == true
+    }
+
+    // FLAG_SECURE while a locked notebook or an unlocked locked note is on screen
+    fun updateSecureFlag() {
+        val notebookLocked = isNotebookShown && currentNotebook?.isLocked() == true
+        val lockedNoteShown = ::mCurrentNote.isInitialized && mCurrentNote.isLocked() &&
+            getCurrentFragment()?.shouldShowLockedContent == true
+        setSecureContent(notebookLocked || lockedNoteShown)
+    }
+
+    fun refreshChecklistNote(noteId: Long) {
+        val index = mAdapter?.getPosition(noteId) ?: return
+        if (index != -1) {
+            mAdapter?.refreshChecklist(index)
+        }
     }
 
     private fun setupSearchButtons() {
@@ -605,13 +712,12 @@ class MainActivity : SimpleActivity() {
             searchIndex = 0
             searchMatches = emptyList()
 
-            currentTextFragment?.removeTextWatcher()
-            currentNotesView()?.let { noteView ->
-                noteView.text!!.clearBackgroundSpans()
-            }
+            // the highlights live on the page we just left
+            mAdapter?.textFragment(lastSelectedPage)?.clearSearchHighlights()
+            currentTextFragment?.clearSearchHighlights()
+            lastSelectedPage = it
 
             closeSearch()
-            currentTextFragment?.setTextWatcher()
         }
 
         searchQueryET.setOnEditorActionListener(TextView.OnEditorActionListener { _, actionId, _ ->
@@ -708,7 +814,7 @@ class MainActivity : SimpleActivity() {
 
     private fun getWantedNoteIndex(wantedNoteId: Long?): Int {
         intent.removeExtra(OPEN_NOTE_ID)
-        val noteIdToOpen = if (wantedNoteId == null || wantedNoteId == -1L) config.currentNoteId else wantedNoteId
+        val noteIdToOpen = if (wantedNoteId == null || wantedNoteId <= 0L) config.currentNoteId else wantedNoteId
         return getNoteIndexWithId(noteIdToOpen)
     }
 
@@ -763,31 +869,13 @@ class MainActivity : SimpleActivity() {
 
     private fun addNewNote(note: Note) {
         NotesHelper(this).insertOrUpdateNote(note) { newNoteId ->
-            if (shouldDeletePlaceholderAfterFirstRealNote && mNotes.size == 1 && isPlaceholderNote(mNotes[0])) {
-                val placeholder = mNotes[0]
-                ensureBackgroundThread {
-                    notesDB.deleteNote(placeholder)
-                    runOnUiThread {
-                        shouldDeletePlaceholderAfterFirstRealNote = false
-                        showSaveButton = false
-                        showUndoButton = false
-                        showRedoButton = false
-                        initViewPager(newNoteId)
-                        updateSelectedNote(newNoteId)
-                        binding.viewPager.onGlobalLayout {
-                            mAdapter?.focusEditText(getNoteIndexWithId(newNoteId))
-                        }
-                    }
-                }
-            } else {
-                showSaveButton = false
-                showUndoButton = false
-                showRedoButton = false
-                initViewPager(newNoteId)
-                updateSelectedNote(newNoteId)
-                binding.viewPager.onGlobalLayout {
-                    mAdapter?.focusEditText(getNoteIndexWithId(newNoteId))
-                }
+            showSaveButton = false
+            showUndoButton = false
+            showRedoButton = false
+            initViewPager(newNoteId)
+            updateSelectedNote(newNoteId)
+            binding.viewPager.onGlobalLayout {
+                mAdapter?.focusEditText(getNoteIndexWithId(newNoteId))
             }
         }
     }
@@ -851,7 +939,10 @@ class MainActivity : SimpleActivity() {
 
     private fun checkFile(path: String, checkTitle: Boolean, onChecksPassed: (file: File) -> Unit) {
         val file = File(path)
-        if (path.isMediaFile()) {
+        if (isAppPrivatePath(file)) {
+            // binding a note to our own database or settings would let autosave overwrite them
+            toast(com.simplemobiletools.commons.R.string.system_folder_restriction)
+        } else if (path.isMediaFile()) {
             toast(com.simplemobiletools.commons.R.string.invalid_file_format)
         } else if (file.length() > 1000 * 1000) {
             toast(R.string.file_too_large)
@@ -859,6 +950,32 @@ class MainActivity : SimpleActivity() {
             toast(R.string.title_taken)
         } else {
             onChecksPassed(file)
+        }
+    }
+
+    private fun isAppPrivatePath(file: File): Boolean {
+        val target = try {
+            file.canonicalPath
+        } catch (e: Exception) {
+            return true
+        }
+
+        val privateDirs = listOfNotNull(
+            applicationInfo.dataDir?.let(::File),
+            filesDir,
+            cacheDir,
+            noBackupFilesDir,
+            codeCacheDir,
+            getDatabasePath("notes.db").parentFile
+        )
+
+        return privateDirs.any { dir ->
+            val dirPath = try {
+                dir.canonicalPath
+            } catch (e: Exception) {
+                dir.absolutePath
+            }
+            target == dirPath || target.startsWith(dirPath + File.separator)
         }
     }
 
@@ -886,7 +1003,7 @@ class MainActivity : SimpleActivity() {
 
     private fun importUri(uri: Uri) {
         when (uri.scheme) {
-            "file" -> openPath(uri.path!!)
+            "file" -> uri.path?.let(::openPath)
             "content" -> {
                 val realPath = getRealPathFromURI(uri)
                 if (hasPermission(PERMISSION_READ_STORAGE)) {
@@ -970,43 +1087,34 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+    // Files opened from other apps go through the same confirmation as "Open file", never silently added
     private fun openPath(path: String) {
         checkFile(path, false) {
-            val title = path.getFilenameFromPath()
-            try {
-                val fileText = it.readText().trim()
-                val checklistItems = fileText.parseChecklistItems()
-                val note = if (checklistItems != null) {
-                    Note(
-                        id = null,
-                        notebookId = currentNotebookId,
-                        title = title.substringBeforeLast('.'),
-                        value = fileText,
-                        type = NoteType.TYPE_CHECKLIST,
-                        path = "",
-                        protectionType = PROTECTION_NONE,
-                        protectionHash = ""
-                    )
-                } else {
-                    Note(
-                        id = null,
-                        notebookId = currentNotebookId,
-                        title = title,
-                        value = "",
-                        type = NoteType.TYPE_TEXT,
-                        path = path,
-                        protectionType = PROTECTION_NONE,
-                        protectionHash = ""
-                    )
+            ensureBackgroundThread {
+                val fileText = try {
+                    it.readText().trim()
+                } catch (e: Exception) {
+                    runOnUiThread { showErrorToast(e) }
+                    return@ensureBackgroundThread
                 }
 
-                if (mNotes.any { it.title.equals(note.title, true) }) {
-                    note.title += " (file)"
-                }
+                val isChecklist = fileText.parseChecklistItems() != null
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) {
+                        return@runOnUiThread
+                    }
 
-                addNewNote(note)
-            } catch (e: Exception) {
-                showErrorToast(e)
+                    val title = path.getFilenameFromPath().let { name -> if (isChecklist) name.substringBeforeLast('.') else name }
+                    val uniqueTitle = if (mNotes.any { note -> note.title.equals(title, true) }) "$title (file)" else title
+                    OpenFileDialog(this, it.path) { note ->
+                        if (isChecklist) {
+                            // Checklists are imported as a copy, never linked: saving would write JSON into the file
+                            displayNewNoteDialog(fileText, title = uniqueTitle, "", setChecklistAsDefault = true)
+                        } else {
+                            displayNewNoteDialog(note.value, title = uniqueTitle, note.path)
+                        }
+                    }
+                }
             }
         }
     }
@@ -1432,6 +1540,8 @@ class MainActivity : SimpleActivity() {
                     mCurrentNote.protectionType = type
                     NotesHelper(this).insertOrUpdateNote(mCurrentNote) {
                         refreshMenuItems()
+                        updateSecureFlag()
+                        updateWidgets()
                     }
                 }
             }
@@ -1496,7 +1606,9 @@ class MainActivity : SimpleActivity() {
                     checkLockState()
                 }
                 refreshMenuItems()
+                updateSecureFlag()
             }
+            updateWidgets()
         }
     }
 

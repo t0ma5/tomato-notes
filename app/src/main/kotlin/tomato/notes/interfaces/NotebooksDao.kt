@@ -36,6 +36,10 @@ interface NotebooksDao {
     @Query("UPDATE notebooks SET sort_order = :sortOrder WHERE id = :id")
     fun updateSortOrder(id: Long, sortOrder: Int)
 
+    // Salted hashes are unique, so this upgrades exactly the notebook that used oldHash
+    @Query("UPDATE notebooks SET protection_hash = :newHash WHERE protection_hash = :oldHash")
+    fun replaceProtectionHash(oldHash: String, newHash: String)
+
     @Query("UPDATE notebooks SET deleted_ts = :deletedTs WHERE id = :id")
     fun updateDeletedTs(id: Long, deletedTs: Long)
 

@@ -10,6 +10,7 @@ import com.simplemobiletools.commons.helpers.ExportResult
 import com.simplemobiletools.commons.helpers.PROTECTION_NONE
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
+import tomato.notes.databases.NotesDatabase
 import tomato.notes.extensions.config
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.notebooksDB
@@ -21,36 +22,26 @@ import tomato.notes.models.BackupData
 import tomato.notes.models.BackupSettings
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import java.io.File
 import java.io.OutputStream
+import java.util.concurrent.Callable
 
 class NotesHelper(val context: Context) {
+    // Notes with a missing file path are kept: the file may only be unreachable for now (SD card, storage access)
+    // and the note still has its stored value
     fun getNotes(callback: (notes: List<Note>) -> Unit) {
         ensureBackgroundThread {
-            val notes = context.notesDB.getNotes().toMutableList()
-            val notesToDelete = mutableListOf<Note>()
-            notes.forEach {
-                if (it.path.isNotEmpty()) {
-                    if (!it.path.startsWith("content://") && !File(it.path).exists()) {
-                        context.notesDB.deleteNote(it)
-                        notesToDelete.add(it)
-                    }
-                }
-            }
-
-            notes.removeAll(notesToDelete)
-            cleanupPlaceholderNotesSync()
-            val remaining = context.notesDB.getNotes()
-
+            val notes = getNotesSync()
             Handler(Looper.getMainLooper()).post {
-                callback(remaining)
+                callback(notes)
             }
         }
     }
 
+    // Blocking variant for background threads
+    fun getNotesSync(): List<Note> = context.notesDB.getNotes()
+
     fun getNotesInNotebook(notebookId: Long, callback: (notes: List<Note>) -> Unit) {
         ensureBackgroundThread {
-            cleanupPlaceholderNotesSync()
             val notes = context.notesDB.getNotesInNotebook(notebookId)
             Handler(Looper.getMainLooper()).post {
                 callback(notes)
@@ -58,24 +49,13 @@ class NotesHelper(val context: Context) {
         }
     }
 
-    fun cleanupPlaceholderNotes() {
-        ensureBackgroundThread {
-            cleanupPlaceholderNotesSync()
-        }
-    }
+    // No-ops: the empty "General note" could be a note the user made, so it is never deleted automatically.
+    // First install no longer creates a placeholder note.
+    @Deprecated("Placeholder notes are no longer deleted automatically")
+    fun cleanupPlaceholderNotes() {}
 
-    fun cleanupPlaceholderNotesSync() {
-        val generalNote = context.resources.getString(R.string.general_note)
-        context.notesDB.getNotes()
-            .filter { note ->
-                note.title == generalNote &&
-                    note.value.isEmpty() &&
-                    note.path.isEmpty() &&
-                    note.type == NoteType.TYPE_TEXT &&
-                    !note.isLocked()
-            }
-            .forEach { context.notesDB.deleteNote(it) }
-    }
+    @Deprecated("Placeholder notes are no longer deleted automatically")
+    fun cleanupPlaceholderNotesSync() {}
 
     fun ensureAtLeastOneNotebook(callback: (notebookId: Long) -> Unit) {
         ensureBackgroundThread {
@@ -133,149 +113,184 @@ class NotesHelper(val context: Context) {
         }
     }
 
+    // The callback runs on a background thread
     fun importNotes(
         activity: BaseSimpleActivity,
         notes: List<Note>,
         notebooks: List<Notebook> = emptyList(),
         checklistSorting: List<Int?> = emptyList(),
+        checklistItemOrder: List<List<Int>?> = emptyList(),
         callback: (ImportResult) -> Unit
     ) {
         ensureBackgroundThread {
-            // Update or create notebooks from backup to restore pinned status and sort order
-            if (notebooks.isNotEmpty()) {
-                val existingNotebooks = activity.notebooksDB.getNotebooks().associateBy { it.title }
-                notebooks.forEach { importedNotebook ->
-                    if (existingNotebooks.containsKey(importedNotebook.title)) {
-                        val existing = existingNotebooks[importedNotebook.title]!!
-                        // Update properties if they differ
-                        if (existing.pinned != importedNotebook.pinned || existing.sortOrder != importedNotebook.sortOrder) {
-                            existing.pinned = importedNotebook.pinned
-                            existing.sortOrder = importedNotebook.sortOrder
-                            activity.notebooksDB.insertOrUpdate(existing)
-                        }
-                    } else {
-                        // Create new notebook with imported properties
-                        val newNotebook = importedNotebook.copy(id = null)
-                        activity.notebooksDB.insertOrUpdate(newNotebook)
-                    }
-                }
-            }
-
-            val currentNotebooks = activity.notebooksDB.getNotebooks().associateBy { it.title }
-            val notebooksMap = currentNotebooks.toMutableMap()
-
-            var imported = 0
-            var skipped = 0
-
-            notes.forEachIndexed { index, note ->
-                val sorting = checklistSorting.getOrNull(index)
-                // we need to reset the ID to avoid overwriting existing notes with the same ID
-                note.id = null
-                if (note.sortOrder <= 0) {
-                    note.sortOrder = (activity.notesDB.getMaxSortOrder() ?: 0) + 1
+            val result = try {
+                val sortingsToSave = mutableListOf<Pair<Long, Int>>()
+                // All or nothing: a failure halfway rolls back every notebook and note written so far
+                val counts = NotesDatabase.getInstance(activity).runInTransaction(Callable {
+                    importNotesSync(activity, notes, notebooks, checklistSorting, checklistItemOrder, sortingsToSave)
+                })
+                // Preferences are not part of the transaction, so write them only after it committed
+                sortingsToSave.forEach { (noteId, sorting) ->
+                    activity.config.saveChecklistSorting(noteId, sorting)
                 }
 
-                // Determine target notebook
-                var targetNotebookId: Long
-                val notebookTitle = note.notebookTitle
-                if (notebookTitle != null) {
-                    if (notebooksMap.containsKey(notebookTitle)) {
-                        targetNotebookId = notebooksMap[notebookTitle]!!.id!!
-                    } else {
-                        val newNotebook = Notebook(null, notebookTitle, PROTECTION_NONE, "")
-                        targetNotebookId = activity.notebooksDB.insertOrUpdate(newNotebook)
-                        notebooksMap[notebookTitle] = newNotebook.copy(id = targetNotebookId)
-                    }
-                } else {
-                    targetNotebookId = activity.notebooksDB.getNotebooks().firstOrNull()?.id
-                        ?: activity.notebooksDB.insertOrUpdate(
-                            Notebook(null, activity.getString(R.string.app_launcher_name), PROTECTION_NONE, "")
-                        )
+                val imported = counts.first
+                val skipped = counts.second
+                when {
+                    imported == 0 && skipped > 0 -> ImportResult.IMPORT_NOTHING_NEW
+                    imported > 0 -> ImportResult.IMPORT_OK
+                    else -> ImportResult.IMPORT_FAIL
                 }
-
-                note.notebookId = targetNotebookId
-                note.deletedTs = 0L
-
-                val existingNoteId = activity.notesDB.getNoteIdWithTitleInNotebook(note.title, targetNotebookId)
-                if (existingNoteId != null) {
-                    val existingNote = activity.notesDB.getNoteWithId(existingNoteId)
-                    if (existingNote != null && existingNote.value == note.value) {
-                        saveImportedChecklistSorting(activity, existingNoteId, note, sorting)
-                        skipped++
-                    } else {
-                        // Duplicate title but different content -> Rename and import
-                        var newTitle = note.title
-                        var i = 1
-                        while (activity.notesDB.getNoteIdWithTitleInNotebook(newTitle, targetNotebookId) != null) {
-                            newTitle = "${note.title} ($i)"
-                            i++
-                        }
-                        note.title = newTitle
-                        val newId = activity.notesDB.insertOrUpdate(note)
-                        saveImportedChecklistSorting(activity, newId, note, sorting)
-                        imported++
-                    }
-                } else {
-                    val newId = activity.notesDB.insertOrUpdate(note)
-                    saveImportedChecklistSorting(activity, newId, note, sorting)
-                    imported++
-                }
-            }
-
-            val result = when {
-                imported == 0 && skipped > 0 -> ImportResult.IMPORT_NOTHING_NEW
-                imported > 0 -> ImportResult.IMPORT_OK
-                else -> ImportResult.IMPORT_FAIL
+            } catch (e: Exception) {
+                ImportResult.IMPORT_FAIL
             }
             callback(result)
         }
     }
 
+    // Returns imported and skipped counts. Must run inside a transaction.
+    private fun importNotesSync(
+        activity: BaseSimpleActivity,
+        notes: List<Note>,
+        notebooks: List<Notebook>,
+        checklistSorting: List<Int?>,
+        checklistItemOrder: List<List<Int>?>,
+        sortingsToSave: MutableList<Pair<Long, Int>>
+    ): Pair<Int, Int> {
+        val notebooksMap = activity.notebooksDB.getNotebooks().associateBy { it.title }.toMutableMap()
+
+        // Update or create notebooks from backup to restore pinned status and sort order
+        notebooks.forEach { importedNotebook ->
+            val existing = notebooksMap[importedNotebook.title]
+            if (existing != null) {
+                // Update properties if they differ
+                if (existing.pinned != importedNotebook.pinned || existing.sortOrder != importedNotebook.sortOrder) {
+                    existing.pinned = importedNotebook.pinned
+                    existing.sortOrder = importedNotebook.sortOrder
+                    activity.notebooksDB.insertOrUpdate(existing)
+                }
+            } else {
+                // Create new notebook with imported properties
+                val newNotebook = importedNotebook.copy(id = null)
+                val newId = activity.notebooksDB.insertOrUpdate(newNotebook)
+                notebooksMap[importedNotebook.title] = newNotebook.copy(id = newId)
+            }
+        }
+
+        var defaultNotebookId: Long? = null
+        var maxSortOrder = activity.notesDB.getMaxSortOrder() ?: 0
+        var imported = 0
+        var skipped = 0
+
+        notes.forEachIndexed { index, note ->
+            val sorting = checklistSorting.getOrNull(index)
+            if (note.type == NoteType.TYPE_CHECKLIST) {
+                note.value = checklistValueInStoredOrder(note.value, checklistItemOrder.getOrNull(index))
+            }
+            // we need to reset the ID to avoid overwriting existing notes with the same ID
+            note.id = null
+            if (note.sortOrder <= 0) {
+                note.sortOrder = maxSortOrder + 1
+            }
+
+            // Determine target notebook
+            val notebookTitle = note.notebookTitle
+            val targetNotebookId = if (notebookTitle != null) {
+                notebooksMap[notebookTitle]?.id ?: run {
+                    val newNotebook = Notebook(null, notebookTitle, PROTECTION_NONE, "")
+                    val newId = activity.notebooksDB.insertOrUpdate(newNotebook)
+                    notebooksMap[notebookTitle] = newNotebook.copy(id = newId)
+                    newId
+                }
+            } else {
+                defaultNotebookId ?: (
+                    activity.notebooksDB.getNotebooks().firstOrNull()?.id
+                        ?: activity.notebooksDB.insertOrUpdate(
+                            Notebook(null, activity.getString(R.string.app_launcher_name), PROTECTION_NONE, "")
+                        )
+                    ).also { defaultNotebookId = it }
+            }
+
+            note.notebookId = targetNotebookId
+            note.deletedTs = 0L
+
+            val existingNoteId = activity.notesDB.getNoteIdWithTitleInNotebook(note.title, targetNotebookId)
+            val existingNote = existingNoteId?.let { activity.notesDB.getNoteWithId(it) }
+            if (existingNoteId != null && existingNote != null && existingNote.value == note.value) {
+                rememberChecklistSorting(sortingsToSave, existingNoteId, note, sorting)
+                skipped++
+            } else {
+                if (existingNoteId != null) {
+                    // Duplicate title but different content -> Rename and import
+                    var newTitle = note.title
+                    var i = 1
+                    while (activity.notesDB.getNoteIdWithTitleInNotebook(newTitle, targetNotebookId) != null) {
+                        newTitle = "${note.title} ($i)"
+                        i++
+                    }
+                    note.title = newTitle
+                }
+                val newId = activity.notesDB.insertOrUpdate(note)
+                maxSortOrder = maxOf(maxSortOrder, note.sortOrder)
+                rememberChecklistSorting(sortingsToSave, newId, note, sorting)
+                imported++
+            }
+        }
+
+        return Pair(imported, skipped)
+    }
+
+    // Blocking: call it off the main thread (an encrypted export runs PBKDF2). Always closes outputStream.
     fun exportNotes(notesToBackup: List<Note>, outputStream: OutputStream, password: String? = null): ExportResult {
         return try {
-            val notebooks = context.notebooksDB.getNotebooks()
-            val notebooksById = notebooks.associateBy { it.id }
-            val config = context.config
-            val checklistSorting = ArrayList<Int?>(notesToBackup.size)
-            val exportNotes = notesToBackup.map { note ->
-                val sorting = if (note.type == NoteType.TYPE_CHECKLIST) config.getChecklistSorting(note.id) else null
-                checklistSorting.add(sorting)
-                note.copy(protectionType = PROTECTION_NONE, protectionHash = "").also { copy ->
-                    copy.notebookTitle = notebooksById[note.notebookId]?.title
-                    if (sorting != null) {
-                        copy.value = checklistValueInDisplayOrder(note.value, sorting, config.moveDoneChecklistItems)
+            outputStream.use { stream ->
+                val notebooks = context.notebooksDB.getNotebooks()
+                val notebooksById = notebooks.associateBy { it.id }
+                val config = context.config
+                val checklistSorting = ArrayList<Int?>(notesToBackup.size)
+                val checklistItemOrder = ArrayList<List<Int>?>(notesToBackup.size)
+                val exportNotes = notesToBackup.map { note ->
+                    val sorting = if (note.type == NoteType.TYPE_CHECKLIST) config.getChecklistSorting(note.id) else null
+                    checklistSorting.add(sorting)
+                    // The file lists checklist items in on-screen order; the stored order goes alongside so import can restore it
+                    val displayOrder = sorting?.let { checklistInDisplayOrder(note.value, it, config.moveDoneChecklistItems) }
+                    checklistItemOrder.add(displayOrder?.second)
+                    note.copy(protectionType = PROTECTION_NONE, protectionHash = "").also { copy ->
+                        copy.notebookTitle = notebooksById[note.notebookId]?.title
+                        if (displayOrder != null) {
+                            copy.value = displayOrder.first
+                        }
                     }
                 }
-            }
-            val exportNotebooks = notebooks.map { it.copy(protectionType = PROTECTION_NONE, protectionHash = "") }
-            val settings = BackupSettings(
-                autosaveNotes = config.autosaveNotes,
-                displaySuccess = config.displaySuccess,
-                clickableLinks = config.clickableLinks,
-                monospacedFont = config.monospacedFont,
-                showKeyboard = config.showKeyboard,
-                showNotePicker = config.showNotePicker,
-                showWordCount = config.showWordCount,
-                gravity = config.gravity,
-                placeCursorToEnd = config.placeCursorToEnd,
-                enableLineWrap = config.enableLineWrap,
-                useIncognitoMode = config.useIncognitoMode,
-                lastCreatedNoteType = config.lastCreatedNoteType,
-                moveDoneChecklistItems = config.moveDoneChecklistItems,
-                fontSizePercentage = config.fontSizePercentage,
-                addNewChecklistItemsTop = config.addNewChecklistItemsTop,
-                notebookColumns = config.notebookColumns
-            )
-            val backupData = BackupData(exportNotes, exportNotebooks, settings, checklistSorting)
+                val exportNotebooks = notebooks.map { it.copy(protectionType = PROTECTION_NONE, protectionHash = "") }
+                val settings = BackupSettings(
+                    autosaveNotes = config.autosaveNotes,
+                    displaySuccess = config.displaySuccess,
+                    clickableLinks = config.clickableLinks,
+                    monospacedFont = config.monospacedFont,
+                    showKeyboard = config.showKeyboard,
+                    showNotePicker = config.showNotePicker,
+                    showWordCount = config.showWordCount,
+                    gravity = config.gravity,
+                    placeCursorToEnd = config.placeCursorToEnd,
+                    enableLineWrap = config.enableLineWrap,
+                    useIncognitoMode = config.useIncognitoMode,
+                    lastCreatedNoteType = config.lastCreatedNoteType,
+                    moveDoneChecklistItems = config.moveDoneChecklistItems,
+                    fontSizePercentage = config.fontSizePercentage,
+                    addNewChecklistItemsTop = config.addNewChecklistItemsTop,
+                    notebookColumns = config.notebookColumns
+                )
+                val itemOrder = if (checklistItemOrder.any { it != null }) checklistItemOrder else emptyList()
+                val backupData = BackupData(exportNotes, exportNotebooks, settings, checklistSorting, itemOrder)
 
-            val jsonString = Json.encodeToString(backupData)
-            val payload = if (!password.isNullOrEmpty()) {
-                NotesEncryptionHelper.encrypt(jsonString, password)
-            } else {
-                jsonString
-            }
-            outputStream.use {
-                it.write(payload.toByteArray(Charsets.UTF_8))
+                val jsonString = Json.encodeToString(backupData)
+                val payload = if (!password.isNullOrEmpty()) {
+                    NotesEncryptionHelper.encrypt(jsonString, password)
+                } else {
+                    jsonString
+                }
+                stream.write(payload.toByteArray(Charsets.UTF_8))
             }
             ExportResult.EXPORT_OK
         } catch (e: Exception) {
@@ -283,26 +298,48 @@ class NotesHelper(val context: Context) {
         }
     }
 
-    private fun saveImportedChecklistSorting(activity: BaseSimpleActivity, noteId: Long, note: Note, sorting: Int?) {
+    private fun rememberChecklistSorting(sortingsToSave: MutableList<Pair<Long, Int>>, noteId: Long, note: Note, sorting: Int?) {
         if (note.type == NoteType.TYPE_CHECKLIST && sorting != null) {
-            activity.config.saveChecklistSorting(noteId, sorting)
+            sortingsToSave.add(Pair(noteId, sorting))
         }
     }
 
-    private fun checklistValueInDisplayOrder(raw: String, sorting: Int, moveDoneToBottom: Boolean): String {
+    // Returns the value in on-screen order plus the stored item id order, or null when the order is already the same
+    private fun checklistInDisplayOrder(raw: String, sorting: Int, moveDoneToBottom: Boolean): Pair<String, List<Int>>? {
         return try {
-            val checklistItemType = object : TypeToken<List<ChecklistItem>>() {}.type
-            val items = Gson().fromJson<List<ChecklistItem>>(raw, checklistItemType) ?: return raw
+            val items = Gson().fromJson<List<ChecklistItem>>(raw, checklistItemType()) ?: return null
             val ordered = ChecklistItem.displayOrder(items, sorting, moveDoneToBottom)
             if (items.map { it.id } == ordered.map { it.id }) {
-                raw
+                null
             } else {
-                Gson().toJson(ordered)
+                Pair(Gson().toJson(ordered), items.map { it.id })
             }
         } catch (e: Exception) {
-            raw
+            null
         }
     }
+
+    // Puts exported checklist items back into their stored order, so a custom order with done items moved down survives
+    private fun checklistValueInStoredOrder(value: String, storedOrder: List<Int>?): String {
+        if (storedOrder.isNullOrEmpty()) {
+            return value
+        }
+        return try {
+            val items = Gson().fromJson<List<ChecklistItem>>(value, checklistItemType()) ?: return value
+            val positions = HashMap<Int, Int>()
+            storedOrder.forEachIndexed { position, id ->
+                if (id !in positions) {
+                    positions[id] = position
+                }
+            }
+            val restored = items.sortedBy { positions[it.id] ?: Int.MAX_VALUE }
+            if (restored.map { it.id } == items.map { it.id }) value else Gson().toJson(restored)
+        } catch (e: Exception) {
+            value
+        }
+    }
+
+    private fun checklistItemType() = object : TypeToken<List<ChecklistItem>>() {}.type
 
     enum class ImportResult {
         IMPORT_FAIL, IMPORT_OK, IMPORT_PARTIAL, IMPORT_NOTHING_NEW

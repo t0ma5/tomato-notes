@@ -121,6 +121,7 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.markwon.core)
+    implementation(libs.androidx.biometric.ktx)
 
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
