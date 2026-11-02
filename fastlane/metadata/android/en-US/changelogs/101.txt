@@ -1,1 +1,8 @@
- * Fixed a note scrolling glitch
+* Automatic backups work again and restart after a reboot
+* File-linked notes are no longer deleted when the file can't be seen
+* Stronger AES-GCM encrypted exports; 1.0 encrypted backups can't be imported
+* Stronger notebook password hashing; old passwords still work
+* Locked notes and notebooks stay hidden on widgets, previews, search and recents
+* Widgets show deleted notes and come back after a restore
+* Back gesture, insets and rotation fixes for Android 15 and 16
+* Crash fixes

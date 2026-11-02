@@ -1,7 +1,7 @@
 Changelog
 ==========
 
-Unreleased
+Version 1.1 *(2026-11-02)*
 ----------------------------
 
  * Automatic backups work again; they failed on every run and left an empty file. They also restart after a reboot

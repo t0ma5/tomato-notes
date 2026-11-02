@@ -111,26 +111,17 @@ jobs:
             `Tomato-Notes_<version>-FOSS-arm64-v8a.apk` for most phones; `...-armeabi-v7a.apk` for 32-bit ARM; `...-x86_64.apk` for 64-bit emulators; `...-FOSS-universal.apk` has all three ABIs.
             They can sit next to Play Store Simple Notes Pro. Launcher name is Notes.
 
-            ## New in 1.0
+            ## New in 1.1
 
-            1. **Print** — If the print page fails to load, a toast reports the error.
-            2. **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
-            3. **Read-only notes** — Overflow Make read-only / Allow editing. Blocks typing, checklist checks, and counter buttons. Survives app restart.
-            4. **Keyboard** — Opening the keyboard on a long note scrolls the caret into view.
-            5. **Paste** — Formatted paste becomes plain text. Composing keyboards (AnySoftKeyboard and similar) still work.
-            6. **Widgets** — Settings → Customize widget colors updates every Notes widget, not only the first one. Home-screen notebook widget.
-            7. **Save icon / search** — Saved text notes no longer show Save again after a swipe. In-note search no longer crashes after changing notes.
-            8. **Android 16** — compileSdk and targetSdk 36. Toolbar sits below the status bar.
-            9. **Notes / notebooks** — Toolbar icon switches a two-column notes card grid and the notebooks grid. Notes is the default after install. Create, rename, pin, reorder, lock, and delete notebooks. Cards show the count on the left and `:::` on the right. Lock a notebook with fingerprint, pattern, or PIN. Every notebook can be deleted. First install no longer creates a fake “General note”. Delete the last remaining note. Pin individual notes.
-            10. **Search and tags** — Search notes, notebooks, and tags. Move checklist items or a whole note to another notebook.
-            11. **Recycle bin** — Restore deleted notes and notebooks.
-            12. **Write** — Markdown preview. Undo and redo. Counter notes with colored +/− buttons. Uncheck all, collapse checked items, and sort each checklist on its own.
-            13. **About licences** — Third party licences include Gson, Markwon, and Kotlinx Serialization.
-            14. **Dark red theme** — Dark page, contrasting cards, red toolbar and status bar. Settings no longer closes on its own.
-            15. **Lock notes** — Lock a text note, checklist, or counter with fingerprint, pattern, or PIN. The card hides the preview and shows a lock in the lower-right.
-            16. **Encrypted exports** — Export with a password (AES) or as plain text. Locks are stripped in the backup so another phone can restore.
-            17. **Note cards** — Title plus 4 preview lines; each source line stays on one row and ellipsizes. Long-press a card to reorder.
-            18. **No nags** — No donation, rate, or “what’s new” popups.
-            19. **Checklist export** — Settings → Export notes writes checklist items in the order on screen (custom, title, date, or done, and done items at the bottom). Import keeps that order.
+            1. **Automatic backups** — They failed on every run and left an empty file; now they run in the background, only count successful runs, and restart after a reboot.
+            2. **No silent deletes** — Notes linked to a file are kept when the file can't be seen (SD card removed, storage permission). Empty notes titled "General note" are no longer removed.
+            3. **Stronger encryption** — Password exports use AES-256-GCM with a PBKDF2-SHA256 key, and a wrong password is always reported as such. Encrypted backup files made by 1.0 can't be imported. Your notes stay in the app, so make a new export after updating.
+            4. **Notebook passwords** — Stored with a stronger PBKDF2 hash. Existing passwords keep working and upgrade on the next unlock.
+            5. **Locks hold everywhere** — Locked notes and notebooks stay hidden on home-screen widgets, in list previews, search, share targets, "Move items", and the recents screen. Shortcuts, widgets, and shares ask for the notebook's lock. A misread fingerprint no longer closes the screen.
+            6. **Widgets** — A widget shows when its note is deleted and comes back after a restore. New widgets no longer start blank. Checklists use the same order as the app and respect collapsed checked items.
+            7. **Android 15 and 16** — The back gesture asks about unsaved changes and closes search again. Notes and buttons no longer sit under the gesture bar or keyboard.
+            8. **Rotation and restore** — Note text and open dialogs survive rotation, and unsaved text survives the app being killed in the background.
+            9. **Import** — Runs as one step, so a failed import leaves nothing half done. Custom checklist order is kept through export and import.
+            10. **Crash fixes** — Damaged checklist data, external "open" intents without a file, and redo after the linked file changed.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

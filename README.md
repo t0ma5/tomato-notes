@@ -29,9 +29,9 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 - **Recycle bin** — Restore deleted notes and notebooks.
 
 **Private**
-- **Lock** a note or a whole notebook with fingerprint, pattern, or PIN. Locked cards hide their preview until you unlock.
+- **Lock** a note or a whole notebook with fingerprint, pattern, PIN, or password. Locked content stays hidden in previews, search, widgets, share targets, and the recents screen until you unlock.
 - **Read-only** — Freeze a text note, checklist, or counter so it cannot be edited by accident.
-- **Encrypted exports** — AES with a password, or plain text with none.
+- **Encrypted exports** — AES-256-GCM with a password (PBKDF2-SHA256 key), or plain text with none. Automatic backups run in the background and restart after a reboot.
 
 **Write**
 - Text notes with Markdown preview, checklists, and counter notes with colored +/− buttons.
@@ -42,7 +42,7 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 - **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
 
 **Home screen**
-- Notes widgets and a notebook widget. Customize widget colors once; every widget updates.
+- Notes widgets and a notebook widget. Customize widget colors once; every widget updates. A widget shows when its note is deleted and comes back when you restore it.
 
 **No nags**
 - No donation, rate, or “what’s new” popups. Own app ID (`tomato.notes`) so it can sit next to Simple Notes Pro.
@@ -60,7 +60,7 @@ Release APKs come from `assembleCoreRelease` (local and GitHub Actions). Names:
 | --- | --- |
 | App ID | `tomato.notes` |
 | GitHub repo | [t0ma5/tomato-notes](https://github.com/t0ma5/tomato-notes) |
-| App version | 1.0 (versionCode 100) |
+| App version | 1.1 (versionCode 101) |
 | minSdk | 23 |
 | targetSdk / compileSdk | 36 (Android 16) |
 | JVM bytecode | 17 |
