@@ -97,6 +97,15 @@
         </LinearLayout>
 
         <ImageView
+            android:id="@+id/note_card_pin"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_gravity="top|end"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_pin_vector"
+            android:visibility="gone" />
+
+        <ImageView
             android:id="@+id/note_card_lock"
             android:layout_width="24dp"
             android:layout_height="24dp"

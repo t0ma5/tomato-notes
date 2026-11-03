@@ -68,6 +68,7 @@ Release APKs come from `assembleCoreRelease` (local and GitHub Actions). Names:
 | Android Gradle Plugin | 8.13.2 |
 | Kotlin / KSP | 2.2.10 |
 | Room | 2.8.4 |
+| Material Components | 1.12.0 (via Commons, bumped by `scripts/patch_commons.py`) |
 | Local JDK | 25 (do not point Gradle at JDK 17) |
 | CI JDK | Temurin 17 |
 | Commons | `SimpleMobileTools/Simple-Commons` @ `eceb48949e`, patched by `python scripts/patch_commons.py` |

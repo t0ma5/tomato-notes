@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.pm.ShortcutManager
+import android.content.res.ColorStateList
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.net.Uri
@@ -88,7 +89,9 @@ class MainActivity : SimpleActivity() {
     private var pendingNotePicker = false
     private var useSharedAxisMotion = false
 
-    private val backPressedCallback = object : OnBackPressedCallback(true) {
+    // Enabled only while back must do something else than leaving (see updateBackCallback),
+    // so the system can show the predictive back animation the rest of the time
+    private val backPressedCallback = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             onBackRequested()
         }
@@ -152,6 +155,11 @@ class MainActivity : SimpleActivity() {
             applyReadOnlyStateToCurrentNote()
             refreshMenuItems()
             updateSecureFlag()
+            updateBackCallback()
+        }
+
+        binding.mainEmptyNewNote.setOnClickListener {
+            displayNewNoteDialog()
         }
 
         storeStateVariables()
@@ -197,8 +205,9 @@ class MainActivity : SimpleActivity() {
             tabIndicatorColor = getProperPrimaryColor()
         }
         updateTextColors(binding.viewPager)
-
-        checkShortcuts()
+        updateEmptyStateColors()
+        // the autosave setting may have changed in Settings
+        updateBackCallback()
 
         binding.searchWrapper.root.setBackgroundColor(getProperStatusBarColor())
         val contrastColor = getProperPrimaryColor().getContrastColor()
@@ -264,7 +273,10 @@ class MainActivity : SimpleActivity() {
         }
 
         binding.pagerTabStrip.beGone()
-        if (::mCurrentNote.isInitialized) {
+        if (isNotebookShown && mNotes.isEmpty()) {
+            // mCurrentNote may still be the note that was just deleted
+            currentNotebook?.title?.let { binding.mainToolbar.title = it }
+        } else if (::mCurrentNote.isInitialized) {
             binding.mainToolbar.title = mCurrentNote.title
         }
     }
@@ -326,7 +338,9 @@ class MainActivity : SimpleActivity() {
         }
     }
 
-    // onBackPressed() isn't called with predictive back (targetSdk 36), so this runs from an OnBackPressedCallback
+    // onBackPressed() isn't called with predictive back (targetSdk 36), so this runs from an OnBackPressedCallback.
+    // It is only enabled while the search is open or unsaved text needs the save / discard question,
+    // with autosave on TextFragment.onPause saves on the way out.
     private fun onBackRequested() {
         if (isSearchActive) {
             closeSearch()
@@ -344,21 +358,23 @@ class MainActivity : SimpleActivity() {
                 performDefaultBack()
             }
         } else {
-            if (config.autosaveNotes && mAdapter?.anyHasUnsavedChanges() == true) {
-                mAdapter?.saveAllFragmentTexts()
-                if (::mCurrentNote.isInitialized) {
-                    noteSavedSuccessfully(mCurrentNote.title)
-                }
-            }
+            // the callback was stale
             performDefaultBack()
         }
     }
 
-    // Lets the system handle back (finish or move the task back), then re-arms our callback
+    // Lets the system handle back (finish or move the task back), then re-arms our callback if still needed
     private fun performDefaultBack() {
         backPressedCallback.isEnabled = false
         onBackPressedDispatcher.onBackPressed()
-        backPressedCallback.isEnabled = true
+        updateBackCallback()
+    }
+
+    // Call whenever the search opens or closes, the text changes or is saved, the page or notebook changes,
+    // or the autosave setting may have changed
+    fun updateBackCallback() {
+        backPressedCallback.isEnabled = isSearchActive ||
+            (isNotebookShown && !config.autosaveNotes && mAdapter?.anyHasUnsavedEdits() == true)
     }
 
     override fun finish() {
@@ -421,59 +437,8 @@ class MainActivity : SimpleActivity() {
 
     private fun isCurrentItemCounter() = if (::mCurrentNote.isInitialized) mCurrentNote.type == NoteType.TYPE_COUNTER else false
 
-    @SuppressLint("NewApi")
-    private fun checkShortcuts() {
-        val appIconColor = config.appIconColor
-        if (isNougatMR1Plus() && config.lastHandledShortcutColor != appIconColor) {
-            val newTextNote = getNewTextNoteShortcut(appIconColor)
-            val newChecklist = getNewChecklistShortcut(appIconColor)
-
-            try {
-                shortcutManager.dynamicShortcuts = Arrays.asList(newTextNote, newChecklist)
-                config.lastHandledShortcutColor = appIconColor
-            } catch (ignored: Exception) {
-            }
-        }
-    }
-
-    @SuppressLint("NewApi")
-    private fun getNewTextNoteShortcut(appIconColor: Int): ShortcutInfo {
-        val shortLabel = getString(R.string.text_note)
-        val longLabel = getString(R.string.new_text_note)
-        val drawable = resources.getDrawable(com.simplemobiletools.commons.R.drawable.shortcut_plus)
-        (drawable as LayerDrawable).findDrawableByLayerId(R.id.shortcut_plus_background).applyColorFilter(appIconColor)
-        val bmp = drawable.convertToBitmap()
-
-        val intent = Intent(this, MainActivity::class.java)
-        intent.action = Intent.ACTION_VIEW
-        intent.putExtra(NEW_TEXT_NOTE, true)
-        return ShortcutInfo.Builder(this, SHORTCUT_NEW_TEXT_NOTE)
-            .setShortLabel(shortLabel)
-            .setLongLabel(longLabel)
-            .setIcon(Icon.createWithBitmap(bmp))
-            .setIntent(intent)
-            .build()
-    }
-
-    @SuppressLint("NewApi")
-    private fun getNewChecklistShortcut(appIconColor: Int): ShortcutInfo {
-        val shortLabel = getString(R.string.checklist)
-        val longLabel = getString(R.string.new_checklist)
-        val drawable = resources.getDrawable(R.drawable.shortcut_check)
-        (drawable as LayerDrawable).findDrawableByLayerId(R.id.shortcut_plus_background).applyColorFilter(appIconColor)
-        val bmp = drawable.convertToBitmap()
-
-        val intent = Intent(this, MainActivity::class.java)
-        intent.action = Intent.ACTION_VIEW
-        intent.putExtra(NEW_CHECKLIST, true)
-        return ShortcutInfo.Builder(this, SHORTCUT_NEW_CHECKLIST)
-            .setShortLabel(shortLabel)
-            .setLongLabel(longLabel)
-            .setIcon(Icon.createWithBitmap(bmp))
-            .setIntent(intent)
-            .build()
-    }
-
+    // NEW_TEXT_NOTE / NEW_CHECKLIST come from the static launcher shortcuts (res/xml/shortcuts.xml).
+    // This runs from showNotebook's onShown, so the notebook lock was passed first.
     private fun checkIntents(intent: Intent) {
         intent.apply {
             if (action == Intent.ACTION_SEND && type == MIME_TEXT_PLAIN) {
@@ -591,6 +556,8 @@ class MainActivity : SimpleActivity() {
                 hideKeyboard()
                 refreshMenuItems()
                 updateSecureFlag()
+                updateEmptyState()
+                updateBackCallback()
                 if (pendingFirstNotePrompt) {
                     pendingFirstNotePrompt = false
                     displayNewNoteDialog()
@@ -613,7 +580,27 @@ class MainActivity : SimpleActivity() {
             applyReadOnlyStateToCurrentNote()
             refreshMenuItems()
             updateSecureFlag()
+            updateEmptyState()
+            updateBackCallback()
             pendingFirstNotePrompt = false
+        }
+    }
+
+    // Shown over the blank pager while the shown notebook has no notes
+    private fun updateEmptyState() {
+        binding.mainEmptyState.beVisibleIf(isNotebookShown && mNotes.isEmpty())
+    }
+
+    private fun updateEmptyStateColors() {
+        val textColor = getProperTextColor()
+        val primaryColor = getProperPrimaryColor()
+        val contrastColor = primaryColor.getContrastColor()
+        binding.mainEmptyIcon.applyColorFilter(textColor)
+        binding.mainEmptyLabel.setTextColor(textColor)
+        binding.mainEmptyNewNote.apply {
+            backgroundTintList = ColorStateList.valueOf(primaryColor)
+            iconTint = ColorStateList.valueOf(contrastColor)
+            setTextColor(contrastColor)
         }
     }
 
@@ -682,6 +669,8 @@ class MainActivity : SimpleActivity() {
         }
         hideKeyboard()
         binding.viewPager.beInvisible()
+        updateEmptyState()
+        updateBackCallback()
         showNotebook(currentNotebookId, if (::mCurrentNote.isInitialized) mCurrentNote.id else null)
     }
 
@@ -813,6 +802,7 @@ class MainActivity : SimpleActivity() {
 
     private fun openSearch() {
         isSearchActive = true
+        updateBackCallback()
         binding.searchWrapper.root.fadeIn()
         showKeyboard(searchQueryET)
 
@@ -829,6 +819,7 @@ class MainActivity : SimpleActivity() {
     // Also runs from the back callback (predictive back included) while the search bar is open
     private fun closeSearch() {
         isSearchActive = false
+        updateBackCallback()
         // clearing the query also clears the highlights of the current note through searchTextChanged
         searchQueryET.text?.clear()
         searchIndex = 0
@@ -1690,6 +1681,7 @@ class MainActivity : SimpleActivity() {
                 refreshMenuItems()
             }
         }
+        updateBackCallback()
     }
 
     private fun removeDoneItems() {

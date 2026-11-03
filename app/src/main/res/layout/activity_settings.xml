@@ -485,9 +485,51 @@
 
             </RelativeLayout>
 
+            <!-- Not clickable: only tells when the last backup was written and when the next one runs -->
+            <RelativeLayout
+                android:id="@+id/settings_automatic_backups_status_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@null"
+                android:visibility="gone">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_automatic_backups_last"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    tools:text="Last backup: Today 06:00" />
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_automatic_backups_next"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@+id/settings_automatic_backups_last"
+                    tools:text="Next backup: Tomorrow 06:00" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_backup_now_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="gone">
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_backup_now"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/back_up_now" />
+
+            </RelativeLayout>
+
             <RelativeLayout
                 android:id="@+id/settings_manage_automatic_backups_holder"
-                style="@style/SettingsHolderTextViewOneLinerStyle"
+                style="@style/SettingsHolderTextViewStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
@@ -497,6 +539,16 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/manage_automatic_backups" />
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/settings_automatic_backups_folder"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@+id/settings_manage_automatic_backups"
+                    android:ellipsize="middle"
+                    android:singleLine="true"
+                    tools:text="Internal storage/Download" />
 
             </RelativeLayout>
 

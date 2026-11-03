@@ -2,8 +2,10 @@ package tomato.notes.adapters
 
 import android.text.TextUtils
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.simplemobiletools.commons.extensions.beGoneIf
@@ -27,9 +29,14 @@ class NotesListAdapter(
     private var showNotebookName: Boolean,
     private val itemClick: (Note) -> Unit,
     private val itemsReordered: (List<Note>) -> Unit,
+    private val pinToggle: ((Note) -> Unit)? = null,
+    private val deleteNote: ((Note) -> Unit)? = null,
 ) : RecyclerView.Adapter<NotesListAdapter.ViewHolder>() {
 
-    class ViewHolder(val binding: ItemNoteCardBinding) : RecyclerView.ViewHolder(binding.root)
+    class ViewHolder(val binding: ItemNoteCardBinding) : RecyclerView.ViewHolder(binding.root) {
+        // TalkBack actions added on the last bind, removed before the next one
+        val accessibilityActionIds = mutableListOf<Int>()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemNoteCardBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -46,6 +53,18 @@ class NotesListAdapter(
             noteCardBody.applyNoteCardBackground()
             noteCardTitle.text = note.title
             noteCardTitle.setTextColor(text)
+            // the pin sits in the top corner, so a pinned card's title stops before it
+            noteCardPin.beVisibleIf(note.isPinned())
+            if (note.isPinned()) {
+                noteCardPin.setImageDrawable(context.resources.getColoredDrawableWithColor(R.drawable.ic_pin_vector, primary))
+            }
+            (noteCardTitle.layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
+                val endMargin = if (note.isPinned()) (22 * context.resources.displayMetrics.density).toInt() else 0
+                if (params.marginEnd != endMargin) {
+                    params.marginEnd = endMargin
+                    noteCardTitle.layoutParams = params
+                }
+            }
             // A locked notebook hides previews until it is unlocked in this session
             val hidePreview = note.isLocked() || !NotebookUnlockSession.canShow(notebooksById[note.notebookId])
             val previewLines = if (hidePreview) emptyList() else note.previewLines(context)
@@ -66,17 +85,52 @@ class NotesListAdapter(
             noteCardNotebook.text = notebookTitle
             noteCardNotebook.setTextColor(muted)
             noteCardNotebook.beVisibleIf(showNotebookName && notebookTitle.isNotEmpty())
-            // TalkBack reads the card as one item: title, notebook, locked
+            // TalkBack reads the card as one item: title, notebook, pinned, locked
             root.contentDescription = listOfNotNull(
                 note.title,
                 notebookTitle.takeIf { showNotebookName && it.isNotEmpty() },
+                context.getString(R.string.a11y_pinned).takeIf { note.isPinned() },
                 context.getString(R.string.a11y_note_locked).takeIf { note.isLocked() }
             ).joinToString(", ")
             root.setOnClickListener { itemClick(note) }
+            bindAccessibilityActions(holder, note)
         }
     }
 
     override fun getItemCount() = notes.size
+
+    fun getNoteAt(position: Int): Note? = notes.getOrNull(position)
+
+    // Removes a swiped card right away, the next refresh confirms it
+    fun removeNoteAt(position: Int) {
+        if (position in notes.indices) {
+            notes.removeAt(position)
+            notifyItemRemoved(position)
+        }
+    }
+
+    // The swipe actions (pin and delete) as TalkBack actions, so they work without swiping
+    private fun bindAccessibilityActions(holder: ViewHolder, note: Note) {
+        val view = holder.itemView
+        holder.accessibilityActionIds.forEach { ViewCompat.removeAccessibilityAction(view, it) }
+        holder.accessibilityActionIds.clear()
+        val context = view.context
+        pinToggle?.let { toggle ->
+            val label = context.getString(if (note.isPinned()) R.string.unpin else R.string.pin)
+            holder.accessibilityActionIds += ViewCompat.addAccessibilityAction(view, label) { _, _ ->
+                toggle(note)
+                true
+            }
+        }
+        deleteNote?.let { delete ->
+            val label = context.getString(com.simplemobiletools.commons.R.string.delete)
+            holder.accessibilityActionIds += ViewCompat.addAccessibilityAction(view, label) { _, _ ->
+                delete(note)
+                true
+            }
+        }
+        holder.accessibilityActionIds.removeAll { it == View.NO_ID }
+    }
 
     private fun bindPreviewLine(view: TextView, line: String?, textColor: Int) {
         view.setLines(1)
@@ -113,8 +167,14 @@ class NotesListAdapter(
         }).dispatchUpdatesTo(this)
     }
 
+    // Pinned notes stay first, so a card moves only among cards with the same pin state
     fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
         if (fromPosition == toPosition) {
+            return false
+        }
+        val from = notes.getOrNull(fromPosition) ?: return false
+        val to = notes.getOrNull(toPosition) ?: return false
+        if (from.isPinned() != to.isPinned()) {
             return false
         }
         if (fromPosition < toPosition) {

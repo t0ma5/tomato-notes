@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Empty notebook in the note editor -->
+    <string name="no_notes_yet">No notes yet</string>
+    <!-- Empty state button and the short label of the launcher shortcut, keep it at most 10 characters -->
+    <string name="new_note_short">New note</string>
+</resources>

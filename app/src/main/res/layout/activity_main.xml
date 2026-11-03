@@ -38,4 +38,40 @@
 
         </com.simplemobiletools.commons.views.MyViewPager>
     </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/main_empty_state"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="@dimen/activity_margin"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/main_empty_icon"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:alpha="0.6"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_notes_vector" />
+
+        <com.simplemobiletools.commons.views.MyTextView
+            android:id="@+id/main_empty_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/activity_margin"
+            android:gravity="center"
+            android:text="@string/no_notes_yet"
+            android:textSize="@dimen/big_text_size" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/main_empty_new_note"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/big_margin"
+            android:text="@string/new_note_short"
+            app:icon="@drawable/ic_plus_vector" />
+    </LinearLayout>
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

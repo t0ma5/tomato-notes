@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcuts (long-press the app icon). MainActivity.checkIntents handles the extras
+     in the current notebook, after its lock (if any) was passed. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_note"
+        android:shortcutId="static_new_text_note"
+        android:shortcutLongLabel="@string/new_text_note"
+        android:shortcutShortLabel="@string/new_note_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="tomato.notes.activities.MainActivity"
+            android:targetPackage="tomato.notes">
+            <extra
+                android:name="new_text_note"
+                android:value="true" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_checklist"
+        android:shortcutId="static_new_checklist"
+        android:shortcutLongLabel="@string/new_checklist"
+        android:shortcutShortLabel="@string/checklist">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="tomato.notes.activities.MainActivity"
+            android:targetPackage="tomato.notes">
+            <extra
+                android:name="new_checklist"
+                android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>

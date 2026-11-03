@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Filter chips above the notes grid -->
+    <string name="list_filter_notes">Filter notes</string>
+    <string name="list_filter_all">All</string>
+    <string name="list_filter_pinned">Pinned</string>
+    <string name="list_filter_locked">Locked</string>
+
+    <!-- Empty states of the notes and notebooks screens -->
+    <string name="list_empty_notes">No notes yet</string>
+    <string name="list_empty_notebook">This notebook has no notes yet</string>
+    <string name="list_empty_notebooks">No notebooks yet</string>
+    <string name="list_new_note">New note</string>
+    <string name="list_no_matching_notes">No matching notes</string>
+    <string name="list_clear_filter">Clear filter</string>
+</resources>

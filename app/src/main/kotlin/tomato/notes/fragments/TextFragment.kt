@@ -125,8 +125,9 @@ class TextFragment : NoteFragment() {
 
     override fun onPause() {
         super.onPause()
+        // with autosave on, back leaves without asking, so this is where the text gets saved; no toast on every pause
         if (config!!.autosaveNotes) {
-            saveText(false)
+            saveText(false, showSuccess = false)
         }
 
         removeTextWatcher()
@@ -368,7 +369,7 @@ class TextFragment : NoteFragment() {
 
     fun getNotesView() = noteEditText
 
-    fun saveText(force: Boolean) {
+    fun saveText(force: Boolean, showSuccess: Boolean = true) {
         if (note == null || !::noteEditText.isInitialized) {
             return
         }
@@ -390,13 +391,18 @@ class TextFragment : NoteFragment() {
         if (newText != null && (newText != oldText || force)) {
             note!!.value = newText
             loadedText = newText
-            saveNoteValue(note!!, newText)
+            saveNoteValue(note!!, newText, showSuccess)
             requireContext().updateWidgets()
+            (activity as? MainActivity)?.updateBackCallback()
         }
     }
 
     fun hasUnsavedChanges() = note != null && ::noteEditText.isInitialized && context != null &&
         getCurrentNoteViewText() != note!!.getNoteStoredValue(requireContext())
+
+    // Compares with the value last loaded or saved instead of reading a linked file again
+    fun hasUnsavedEdits() = note != null && ::noteEditText.isInitialized && loadedText != null &&
+        getCurrentNoteViewText() != loadedText
 
     // Appends now when the note is loaded, otherwise once it is
     fun appendText(text: String) {

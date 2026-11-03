@@ -135,13 +135,17 @@ fun Context.cancelScheduledAutomaticBackup() {
     alarmManager.cancel(getAutomaticBackupIntent())
 }
 
+// True when the last scheduled 6:00 backup never wrote a file, e.g. the device was off at that time
+fun Context.isPreviousAutoBackupMissed(): Boolean {
+    val previousRealBackupTime = config.lastAutoBackupTime
+    val previousScheduledBackupTime = getPreviousAutoBackupTime().millis
+    return previousRealBackupTime < previousScheduledBackupTime
+}
+
 // onDone runs once on a background thread when nothing more is left to do, so receivers can finish goAsync()
 fun Context.checkAndBackupNotesOnBoot(onDone: (() -> Unit)? = null) {
     if (config.autoBackup) {
-        val previousRealBackupTime = config.lastAutoBackupTime
-        val previousScheduledBackupTime = getPreviousAutoBackupTime().millis
-        val missedPreviousBackup = previousRealBackupTime < previousScheduledBackupTime
-        if (missedPreviousBackup) {
+        if (isPreviousAutoBackupMissed()) {
             // device was probably off at the scheduled time so backup now
             backupNotes(onDone = onDone)
             return

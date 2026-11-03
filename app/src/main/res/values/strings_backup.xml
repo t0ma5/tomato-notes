@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Automatic backups status in Settings. %s is "Today 06:00", "Yesterday 06:00" or a date and time -->
+    <string name="last_backup">Last backup: %s</string>
+    <string name="last_backup_missed">Last backup: %s (scheduled backup missed)</string>
+    <string name="next_backup">Next backup: %s</string>
+    <string name="no_backup_yet">No backup yet</string>
+    <string name="back_up_now">Back up now</string>
+</resources>

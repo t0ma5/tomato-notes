@@ -36,6 +36,7 @@ def patch_commons_versions() -> None:
             ('ksp = "1.9.10-1.0.13"', 'ksp = "2.2.10-2.0.2"'),
             ('kotlinxSerializationJson = "1.5.1"', 'kotlinxSerializationJson = "1.8.1"'),
             ('room = "2.6.0-beta01"', 'room = "2.8.4"'),
+            ('material = "1.9.0"', 'material = "1.12.0"'),
             ('app-build-compileSDKVersion = "34"', 'app-build-compileSDKVersion = "36"'),
             ('app-build-targetSDK = "34"', 'app-build-targetSDK = "36"'),
             ('rtlViewpager = "940f12724f"', 'rtlViewpager = "2.0.2"'),
@@ -47,6 +48,46 @@ def patch_commons_versions() -> None:
                 'kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }\n',
                 'kotlinAndroid = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }\n'
                 'kotlinCompose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }\n',
+            ),
+        ],
+    )
+
+
+def patch_material_1_12() -> None:
+    """Material 1.10+ paints M3 alert dialogs with colorSurfaceContainerHigh, not colorSurface.
+
+    Pin the You-theme dialog background back to the color Commons sets as colorSurface.
+    """
+    patch(
+        "commons/src/main/res/values/styles.xml",
+        [
+            (
+                '    <style name="MaterialAlertDialog.App" parent="MaterialAlertDialog.Material3">\n'
+                '        <item name="shapeAppearance">@style/ShapeAppearance.App.MediumComponent</item>\n',
+                '    <style name="MaterialAlertDialog.App" parent="MaterialAlertDialog.Material3">\n'
+                '        <item name="backgroundTint">@color/you_dialog_background_color</item>\n'
+                '        <item name="shapeAppearance">@style/ShapeAppearance.App.MediumComponent</item>\n',
+            ),
+        ],
+    )
+
+
+def remove_customization_fork_check() -> None:
+    """Commons closes Customize colors after 50 launches for any package not named com.simplemobiletools.*.
+
+    The local Simple-Commons copy had this removed by hand; CI builds (1.0, 1.1) still shipped it.
+    """
+    patch(
+        "commons/src/main/kotlin/com/simplemobiletools/commons/activities/CustomizationActivity.kt",
+        [
+            (
+                "    private fun pickPrimaryColor() {\n"
+                '        if (!packageName.startsWith("com.simplemobiletools.", true) && baseConfig.appRunCount > 50) {\n'
+                "            finish()\n"
+                "            return\n"
+                "        }\n"
+                "\n",
+                "    private fun pickPrimaryColor() {\n",
             ),
         ],
     )
@@ -213,6 +254,8 @@ def main() -> None:
         raise SystemExit("Simple-Commons/ is missing")
 
     patch_commons_versions()
+    patch_material_1_12()
+    remove_customization_fork_check()
     patch_gradle_for_gradle9()
     rewrite_deprecated_string_apis()
     patch_kotlin2_nullability()

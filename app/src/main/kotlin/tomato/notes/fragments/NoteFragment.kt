@@ -6,6 +6,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.fragment.app.Fragment
 import com.simplemobiletools.commons.extensions.*
+import com.simplemobiletools.commons.helpers.PERMISSION_WRITE_STORAGE
 import com.simplemobiletools.commons.helpers.PROTECTION_NONE
 import tomato.notes.activities.MainActivity
 import tomato.notes.extensions.config
@@ -36,18 +37,23 @@ abstract class NoteFragment : Fragment() {
 
     // Call on the main thread: the DB write runs in the background, file exports may show permission or SAF dialogs.
     // onSaved runs on the main thread once the DB write is done, or right after the file export was started.
-    protected fun saveNoteValue(note: Note, content: String?, onSaved: (() -> Unit)? = null) {
+    // showSuccess false keeps the "saved" toast away, e.g. for the save on every pause.
+    protected fun saveNoteValue(note: Note, content: String?, showSuccess: Boolean = true, onSaved: (() -> Unit)? = null) {
         val activity = activity ?: return
         if (note.path.isEmpty()) {
             NotesHelper(activity.applicationContext).insertOrUpdateNote(note) {
-                if (!activity.isFinishing && !activity.isDestroyed) {
+                if (showSuccess && !activity.isFinishing && !activity.isDestroyed) {
                     (activity as? MainActivity)?.noteSavedSuccessfully(note.title)
                 }
                 onSaved?.invoke()
             }
         } else {
-            if (content != null && !activity.isFinishing && !activity.isDestroyed) {
-                val displaySuccess = activity.config.displaySuccess
+            // With autosave on, back leaves without the activity saving first, so the activity is already finishing
+            // when TextFragment.onPause saves. Content URIs and a granted storage permission need no prompt, write those then too.
+            val canExport = !activity.isDestroyed && (!activity.isFinishing || note.path.startsWith("content://") ||
+                activity.hasPermission(PERMISSION_WRITE_STORAGE))
+            if (content != null && canExport) {
+                val displaySuccess = showSuccess && !activity.isFinishing && activity.config.displaySuccess
                 (activity as? MainActivity)?.tryExportNoteValueToFile(note.path, note.title, content, displaySuccess)
             }
             onSaved?.invoke()

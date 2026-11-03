@@ -22,6 +22,7 @@ import tomato.notes.dialogs.NewNotebookDialog
 import tomato.notes.dialogs.NotebookActionsDialog
 import tomato.notes.dialogs.RenameNotebookDialog
 import tomato.notes.extensions.config
+import tomato.notes.extensions.getMutedTextColor
 import tomato.notes.extensions.notesDB
 import tomato.notes.extensions.notebooksDB
 import tomato.notes.extensions.unlockNotebookIfNeeded
@@ -140,11 +141,18 @@ class NotebooksActivity : SimpleActivity() {
         itemTouchHelper?.attachToRecyclerView(binding.notebooksList)
 
         binding.newNotebookFab.setOnClickListener {
-            NewNotebookDialog(this) { notebook ->
-                NotebooksHelper(this).insertOrUpdateNotebook(notebook) { id ->
-                    notebook.id = id
-                    openNotebookUnlocked(notebook, promptForFirstNote = true)
-                }
+            promptNewNotebook()
+        }
+        binding.notebooksEmptyAction.setOnClickListener {
+            promptNewNotebook()
+        }
+    }
+
+    private fun promptNewNotebook() {
+        NewNotebookDialog(this) { notebook ->
+            NotebooksHelper(this).insertOrUpdateNotebook(notebook) { id ->
+                notebook.id = id
+                openNotebookUnlocked(notebook, promptForFirstNote = true)
             }
         }
     }
@@ -184,7 +192,18 @@ class NotebooksActivity : SimpleActivity() {
             val counts = notesDB.getNotes().groupingBy { it.notebookId }.eachCount()
             runOnUiThread {
                 adapter?.updateItems(notebooks, counts)
+                updateEmptyState(notebooks.isEmpty())
             }
+        }
+    }
+
+    // Shown instead of the grid once the notebooks were loaded and there are none
+    private fun updateEmptyState(isEmpty: Boolean) {
+        binding.notebooksEmptyHolder.beVisibleIf(isEmpty)
+        if (isEmpty) {
+            binding.notebooksEmptyIcon.setImageDrawable(resources.getColoredDrawableWithColor(R.drawable.ic_notebooks_vector, getMutedTextColor()))
+            binding.notebooksEmptyText.setTextColor(getProperTextColor())
+            binding.notebooksEmptyAction.applyEmptyStateButtonColors()
         }
     }
 

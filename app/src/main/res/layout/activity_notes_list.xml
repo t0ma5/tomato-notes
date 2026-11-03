@@ -20,12 +20,106 @@
         android:layout_marginTop="?attr/actionBarSize"
         android:orientation="vertical">
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/notes_list"
+        <!-- Filter chips, hidden while there are fewer than 2 notes. Colors are set in code from the commons colors. -->
+        <HorizontalScrollView
+            android:id="@+id/notes_filter_scroll"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_height="wrap_content"
             android:clipToPadding="false"
-            android:padding="@dimen/medium_margin" />
+            android:paddingStart="@dimen/activity_margin"
+            android:paddingTop="@dimen/medium_margin"
+            android:paddingEnd="@dimen/activity_margin"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/notes_filter_chips"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:contentDescription="@string/list_filter_notes"
+                app:chipSpacingHorizontal="@dimen/medium_margin"
+                app:selectionRequired="false"
+                app:singleLine="true"
+                app:singleSelection="true">
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/notes_filter_all"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:checked="true"
+                    android:text="@string/list_filter_all" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/notes_filter_pinned"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/list_filter_pinned" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/notes_filter_checklists"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/checklists" />
+
+                <com.google.android.material.chip.Chip
+                    android:id="@+id/notes_filter_locked"
+                    style="@style/Widget.Material3.Chip.Filter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/list_filter_locked" />
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/notes_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="@dimen/medium_margin" />
+
+            <!-- Shown instead of the grid when there is nothing to list -->
+            <LinearLayout
+                android:id="@+id/notes_empty_holder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:padding="@dimen/big_margin"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/notes_empty_icon"
+                    android:layout_width="72dp"
+                    android:layout_height="72dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_notes_vector" />
+
+                <com.simplemobiletools.commons.views.MyTextView
+                    android:id="@+id/notes_empty_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/activity_margin"
+                    android:gravity="center"
+                    android:textSize="@dimen/big_text_size"
+                    android:text="@string/list_empty_notes" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/notes_empty_action"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/activity_margin"
+                    android:text="@string/list_new_note" />
+            </LinearLayout>
+        </FrameLayout>
     </LinearLayout>
 
     <com.simplemobiletools.commons.views.MyFloatingActionButton

@@ -66,6 +66,9 @@ class NotesPagerAdapter(fm: FragmentManager, val notes: List<Note>, val activity
 
     fun anyHasUnsavedChanges() = fragments.values.any { (it as? TextFragment)?.hasUnsavedChanges() == true }
 
+    // Cheap variant for every keystroke, it doesn't read linked files
+    fun anyHasUnsavedEdits() = fragments.values.any { (it as? TextFragment)?.hasUnsavedEdits() == true }
+
     fun saveAllFragmentTexts() = fragments.values.forEach { (it as? TextFragment)?.saveText(false) }
 
     fun getNoteChecklistRawItems(position: Int) = (fragments[position] as? ChecklistFragment)?.items

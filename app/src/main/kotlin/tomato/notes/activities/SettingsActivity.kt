@@ -3,6 +3,7 @@ package tomato.notes.activities
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.format.DateFormat
 import android.view.Menu
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.text.TextUtilsCompat
@@ -26,12 +27,15 @@ import tomato.notes.models.BackupData
 import tomato.notes.models.BackupSettings
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import org.joda.time.LocalDate
+import java.util.Calendar
 import java.util.Locale
 import kotlin.system.exitProcess
 
 class SettingsActivity : SimpleActivity() {
     private val notesFileType = "application/json"
     private val binding by viewBinding(ActivitySettingsBinding::inflate)
+    private var isBackupRunning = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         isMaterialActivity = true
@@ -66,10 +70,14 @@ class SettingsActivity : SimpleActivity() {
         setupNotesExport()
         setupNotesImport()
         setupEnableAutomaticBackups()
+        setupBackupNow()
         setupManageAutomaticBackups()
         setupUseRecycleBin()
         setupEmptyRecycleBin()
         updateTextColors(binding.settingsNestedScrollview)
+        // After updateTextColors, which would paint over the missed-backup warning color.
+        // A scheduled backup may also have run while the screen was in the background
+        updateAutomaticBackupsStatus()
 
         arrayOf(
             binding.settingsColorCustomizationSectionLabel,
@@ -489,7 +497,7 @@ class SettingsActivity : SimpleActivity() {
                     onSuccess = {
                         enableOrDisableAutomaticBackups(true)
                         // Write the first backup now so the user can see it works; it schedules the next one at 6:00
-                        backupNotes(notifySuccess = true)
+                        runBackupNow()
                     }
                 )
             } else {
@@ -499,13 +507,23 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
+    private fun setupBackupNow() {
+        binding.settingsBackupNowHolder.beVisibleIf(isRPlus() && config.autoBackup)
+        updateBackupNowState()
+        binding.settingsBackupNowHolder.setOnClickListener {
+            runBackupNow()
+        }
+    }
+
     private fun setupManageAutomaticBackups() {
         binding.settingsManageAutomaticBackupsHolder.beVisibleIf(isRPlus() && config.autoBackup)
+        binding.settingsAutomaticBackupsFolder.text = humanizePath(config.autoBackupFolder)
         binding.settingsManageAutomaticBackupsHolder.setOnClickListener {
             ManageAutoBackupsDialog(
                 activity = this,
                 onSuccess = {
                     scheduleNextAutomaticBackup()
+                    binding.settingsAutomaticBackupsFolder.text = humanizePath(config.autoBackupFolder)
                 }
             )
         }
@@ -514,7 +532,76 @@ class SettingsActivity : SimpleActivity() {
     private fun enableOrDisableAutomaticBackups(enable: Boolean) {
         config.autoBackup = enable
         binding.settingsEnableAutomaticBackups.isChecked = enable
+        binding.settingsBackupNowHolder.beVisibleIf(enable)
         binding.settingsManageAutomaticBackupsHolder.beVisibleIf(enable)
+        binding.settingsAutomaticBackupsFolder.text = humanizePath(config.autoBackupFolder)
+        updateAutomaticBackupsStatus()
+    }
+
+    // The toast from backupNotes reports success or failure, the status line only changes after a written file
+    private fun runBackupNow() {
+        if (isBackupRunning) {
+            return
+        }
+
+        isBackupRunning = true
+        updateBackupNowState()
+        backupNotes(notifySuccess = true) {
+            runOnUiThread {
+                isBackupRunning = false
+                if (isFinishing || isDestroyed) {
+                    return@runOnUiThread
+                }
+
+                updateBackupNowState()
+                updateAutomaticBackupsStatus()
+            }
+        }
+    }
+
+    private fun updateBackupNowState() {
+        binding.settingsBackupNowHolder.isEnabled = !isBackupRunning
+        binding.settingsBackupNowHolder.alpha = if (isBackupRunning) 0.5f else 1f
+    }
+
+    private fun updateAutomaticBackupsStatus() {
+        val showStatus = isRPlus() && config.autoBackup
+        binding.settingsAutomaticBackupsStatusHolder.beVisibleIf(showStatus)
+        if (!showStatus) {
+            return
+        }
+
+        val lastBackupTime = config.lastAutoBackupTime
+        val isMissed = isPreviousAutoBackupMissed()
+        binding.settingsAutomaticBackupsLast.text = when {
+            lastBackupTime == 0L -> getString(R.string.no_backup_yet)
+            isMissed -> getString(R.string.last_backup_missed, formatAutoBackupTime(lastBackupTime))
+            else -> getString(R.string.last_backup, formatAutoBackupTime(lastBackupTime))
+        }
+
+        val lastBackupColor = if (isMissed) {
+            resources.getColor(com.simplemobiletools.commons.R.color.md_red_700, theme)
+        } else {
+            getProperTextColor()
+        }
+        binding.settingsAutomaticBackupsLast.setTextColor(lastBackupColor)
+        binding.settingsAutomaticBackupsNext.text = getString(R.string.next_backup, formatAutoBackupTime(getNextAutoBackupTime().millis))
+    }
+
+    // "Today 06:00", "Yesterday 06:00", "Tomorrow 06:00" or the full date and time, in the user's date and time format
+    private fun formatAutoBackupTime(millis: Long): String {
+        val day = LocalDate(millis)
+        val today = LocalDate.now()
+        val dayLabel = when (day) {
+            today -> getString(com.simplemobiletools.commons.R.string.today)
+            today.minusDays(1) -> getString(com.simplemobiletools.commons.R.string.yesterday)
+            today.plusDays(1) -> getString(com.simplemobiletools.commons.R.string.tomorrow)
+            else -> return millis.formatDate(this)
+        }
+
+        // Same calendar setup as commons formatDate, so the time reads the same as other dates in the app
+        val calendar = Calendar.getInstance(Locale.ENGLISH).apply { timeInMillis = millis }
+        return "$dayLabel ${DateFormat.format(getTimeFormat(), calendar)}"
     }
 
     private fun setupUseRecycleBin() {
