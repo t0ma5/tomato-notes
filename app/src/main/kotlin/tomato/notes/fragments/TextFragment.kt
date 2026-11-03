@@ -96,7 +96,10 @@ class TextFragment : NoteFragment() {
         noteEditText.isSaveEnabled = false
         if (config!!.clickableLinks) {
             noteEditText.apply {
-                linksClickable = true
+                // MyMovementMethod opens links on an exact tap. linksClickable must stay false: with
+                // setTextIsSelectable(true) TextView would also open any link touching the cursor after every tap,
+                // so a tap anywhere near the end of an email or URL opened it
+                linksClickable = false
                 autoLinkMask = Linkify.WEB_URLS or Linkify.EMAIL_ADDRESSES
                 movementMethod = MyMovementMethod.getInstance()
             }
