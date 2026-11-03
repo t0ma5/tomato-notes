@@ -31,22 +31,43 @@ If you build locally, always sign with the same GitHub key. Always add new featu
 When you add a user-visible feature:
 
 1. Add a bullet under **New features in this fork** in `README.md`, in the right group (Organize, Private, Write, Home screen, No nags).
-2. Add the same item to the `body:` of **Publish GitHub Release** in `.github/workflows/build.yml`.
+2. Add the same item to the newest `## New in <version>` section in the `body:` of **Publish GitHub Release** in `.github/workflows/build.yml`.
 3. Add it to `CHANGELOG.md` under the current version.
 4. Add it to `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`.
 
 Every GitHub Release **must** have a numbered user-facing list in `body:`. Never ship a tag with only auto-generated git notes. `generate_release_notes: true` can stay for the commit log underneath.
 
-Keep the preamble (release-signed FOSS APKs for `tomato.notes`, the four APK names, sits next to Simple Notes Pro, launcher name Notes), then:
+### Release text layout (from 1.3 on)
+
+The `body:` starts with `## New in <version>` on its very first line. **Nothing above it**: no intro, no blank line, no note. These lines were removed on purpose and must never come back, in any wording:
+
+- the APK / ABI list (`Tomato-Notes_<version>-FOSS-arm64-v8a.apk`, `armeabi-v7a`, `x86_64`, `universal`, "for most phones", "for emulators", ...)
+- the applicationId line (`Release-signed FOSS APKs for applicationId tomato.notes`, "sits next to Simple Notes Pro", "Launcher name is Notes")
+- the versionCode line (`New app id tomato.notes (versionCode 100)` or any "versionCode N" mention)
+- the `tomato.simple.notes` uninstall / "does not update installs of tomato.simple.notes" warning
+- the "Notes below roll up" line (or any sentence explaining that older sections follow)
+
+The APK names live in `README.md`; the GitHub assets list shows the files.
+
+Older sections roll up below the new one, newest first, unchanged:
 
 ```
-## New in <version>
+## New in 1.3
 
 1. **Short title** — One or two sentences of what changed and why it matters.
 2. **Short title** — ...
+
+## New in 1.2
+
+1. ...
+
+## New in 1.1
+...
 ```
 
-Group related work under one number. Match the previous release: bold title, em dash, concrete behavior.
+For a new release, insert the new `## New in <version>` section at the top of `body:` and leave every older section below it as it is. Never replace or delete an older section. Group related work under one number. Match the previous release: bold title, em dash, concrete behavior.
+
+This applies to future releases only. Don't edit the text of releases already published on GitHub.
 
 ## One build per release
 
