@@ -486,7 +486,8 @@ class SettingsActivity : SimpleActivity() {
                     activity = this,
                     onSuccess = {
                         enableOrDisableAutomaticBackups(true)
-                        scheduleNextAutomaticBackup()
+                        // Write the first backup now so the user can see it works; it schedules the next one at 6:00
+                        backupNotes(notifySuccess = true)
                     }
                 )
             } else {

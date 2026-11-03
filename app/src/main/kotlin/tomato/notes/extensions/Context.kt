@@ -133,15 +133,16 @@ fun Context.checkAndBackupNotesOnBoot(onDone: (() -> Unit)? = null) {
         val missedPreviousBackup = previousRealBackupTime < previousScheduledBackupTime
         if (missedPreviousBackup) {
             // device was probably off at the scheduled time so backup now
-            backupNotes(onDone)
+            backupNotes(onDone = onDone)
             return
         }
     }
     onDone?.invoke()
 }
 
-// onDone runs once on a background thread after the backup attempt, whatever its result
-fun Context.backupNotes(onDone: (() -> Unit)? = null) {
+// onDone runs once on a background thread after the backup attempt, whatever its result.
+// notifySuccess shows a toast when the file was written, for backups the user started
+fun Context.backupNotes(notifySuccess: Boolean = false, onDone: (() -> Unit)? = null) {
     if (!isRPlus()) {
         onDone?.invoke()
         return
@@ -149,7 +150,7 @@ fun Context.backupNotes(onDone: (() -> Unit)? = null) {
 
     ensureBackgroundThread {
         try {
-            backupNotesSync()
+            backupNotesSync(notifySuccess)
         } catch (e: Exception) {
             showErrorToast(e)
             scheduleNextAutomaticBackup()
@@ -160,7 +161,7 @@ fun Context.backupNotes(onDone: (() -> Unit)? = null) {
 }
 
 // Runs on a background thread: Room refuses main-thread queries and exportNotes reads notebooks
-private fun Context.backupNotesSync() {
+private fun Context.backupNotesSync(notifySuccess: Boolean) {
     val notesToBackup = NotesHelper(this).getNotesSync()
     if (notesToBackup.isEmpty()) {
         toast(com.simplemobiletools.commons.R.string.no_entries_for_exporting)
@@ -217,6 +218,9 @@ private fun Context.backupNotesSync() {
     val exportResult = NotesHelper(this).exportNotes(notesToBackup, outputStream)
     if (exportResult == ExportResult.EXPORT_OK) {
         config.lastAutoBackupTime = DateTime.now().millis
+        if (notifySuccess) {
+            toast(com.simplemobiletools.commons.R.string.exporting_successful)
+        }
     } else {
         toast(com.simplemobiletools.commons.R.string.exporting_failed)
     }

@@ -59,7 +59,8 @@ const val AUTO_BACKUP_INTERVAL_IN_DAYS = 1
 // 6 am is the hardcoded automatic backup time, intervals shorter than 1 day are not yet supported.
 fun getNextAutoBackupTime(): DateTime {
     val now = DateTime.now()
-    val sixHour = now.withHourOfDay(6)
+    // withTime, not withHourOfDay: that kept the current minutes and seconds, so 17:42 became 06:42
+    val sixHour = now.withTime(6, 0, 0, 0)
     return if (now.millis < sixHour.millis) {
         sixHour
     } else {
