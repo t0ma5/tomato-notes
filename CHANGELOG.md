@@ -1,6 +1,27 @@
 Changelog
 ==========
 
+Version 1.2 *(2026-11-03)*
+----------------------------
+
+ * Deleting a note or notebook shows an Undo button instead of a confirmation when the recycle bin is on
+ * Swipe a note card right to pin it, left to delete it
+ * Filter chips: Pinned, Checklists, Locked
+ * Empty notebooks and lists show a button to create the first note or notebook
+ * Long-press the app icon for New note and New checklist
+ * Full-screen Material 3 search
+ * Predictive back in the editor; notes save when you leave the app with autosave on
+ * Smooth transitions between notebooks, notes and the editor; list changes animate
+ * Widgets: system corner radius, live picker preview, larger default size, optional Material You colors
+ * Settings shows the last and next automatic backup, with Back up now
+ * The first automatic backup is written as soon as you turn backups on; daily backups run at 06:00
+ * Links in notes open only when you tap the link itself
+ * TalkBack labels, larger touch targets, and more readable done checklist items
+ * Cards follow the System default (Material You) theme
+ * Customize colors no longer closes after 50 app launches
+ * Deleting a locked notebook asks for its lock
+ * Material Components 1.12
+
 Version 1.1 *(2026-11-02)*
 ----------------------------
 

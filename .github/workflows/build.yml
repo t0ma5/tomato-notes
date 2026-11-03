@@ -111,17 +111,17 @@ jobs:
             `Tomato-Notes_<version>-FOSS-arm64-v8a.apk` for most phones; `...-armeabi-v7a.apk` for 32-bit ARM; `...-x86_64.apk` for 64-bit emulators; `...-FOSS-universal.apk` has all three ABIs.
             They can sit next to Play Store Simple Notes Pro. Launcher name is Notes.
 
-            ## New in 1.1
+            ## New in 1.2
 
-            1. **Automatic backups** — They failed on every run and left an empty file; now they run in the background, only count successful runs, and restart after a reboot.
-            2. **No silent deletes** — Notes linked to a file are kept when the file can't be seen (SD card removed, storage permission). Empty notes titled "General note" are no longer removed.
-            3. **Stronger encryption** — Password exports use AES-256-GCM with a PBKDF2-SHA256 key, and a wrong password is always reported as such. Encrypted backup files made by 1.0 can't be imported. Your notes stay in the app, so make a new export after updating.
-            4. **Notebook passwords** — Stored with a stronger PBKDF2 hash. Existing passwords keep working and upgrade on the next unlock.
-            5. **Locks hold everywhere** — Locked notes and notebooks stay hidden on home-screen widgets, in list previews, search, share targets, "Move items", and the recents screen. Shortcuts, widgets, and shares ask for the notebook's lock. A misread fingerprint no longer closes the screen.
-            6. **Widgets** — A widget shows when its note is deleted and comes back after a restore. New widgets no longer start blank. Checklists use the same order as the app and respect collapsed checked items.
-            7. **Android 15 and 16** — The back gesture asks about unsaved changes and closes search again. Notes and buttons no longer sit under the gesture bar or keyboard.
-            8. **Rotation and restore** — Note text and open dialogs survive rotation, and unsaved text survives the app being killed in the background.
-            9. **Import** — Runs as one step, so a failed import leaves nothing half done. Custom checklist order is kept through export and import.
-            10. **Crash fixes** — Damaged checklist data, external "open" intents without a file, and redo after the linked file changed.
+            1. **Undo instead of "Are you sure?"** — With the recycle bin on, deleting a note or notebook happens at once and shows an Undo button. Permanent deletes still ask first. Deleting a locked notebook asks for its lock.
+            2. **Swipe and filter** — Swipe a note card right to pin it, left to delete it (TalkBack gets the same actions). Chips above the grid show only pinned notes, checklists, or locked notes.
+            3. **Empty states and shortcuts** — Empty notebooks and lists offer a button to create the first note or notebook. Long-press the app icon for New note and New checklist.
+            4. **Search** — A full-screen Material 3 search for notes, notebooks, and tags. Back closes it first.
+            5. **Back and motion** — Predictive back in the note editor, and notes save when you leave the app with autosave on. Notebooks, notes, and the editor slide between each other; list changes animate. Respects "remove animations".
+            6. **Widgets** — On Android 12+: system corner radius, a live preview in the widget picker, larger default sizes, and an option to use system colors (Material You).
+            7. **Backups you can see** — Settings shows the last and next automatic backup, warns when one was missed, and has Back up now. Turning backups on writes the first file right away; daily backups run at 06:00.
+            8. **Links** — A link in a note opens only when you tap the link itself, not the empty space near it.
+            9. **Accessibility and Material You** — TalkBack labels on cards, checklist items, and counters; 48dp touch targets; more readable done items. Cards follow the System default theme from Customize colors.
+            10. **Fixes** — Customize colors no longer closes itself after 50 app launches. Material Components 1.12.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

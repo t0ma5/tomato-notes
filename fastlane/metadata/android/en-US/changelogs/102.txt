@@ -1,4 +1,9 @@
- * Allow adding new checklist items at the top at custom sorting
- * Make horizontal swiping between notes more reliable
- * Allow clicking on top note titles
- * Added some stability, translation and UX improvements
+* Undo after deleting instead of a confirmation
+* Swipe note cards to pin or delete; filter chips
+* Empty states, app icon shortcuts, Material 3 search
+* Predictive back, smoother transitions
+* Widgets: rounded corners, previews, Material You colors
+* Backup status and Back up now; first backup on enable
+* Links open only when tapped directly
+* Accessibility and Material You improvements
+* Customize colors no longer closes after 50 launches

@@ -25,13 +25,14 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 
 **Organize**
 - **Notebooks** — Create, rename, pin, reorder, lock, and delete collections of notes. A toolbar icon switches a two-column notes grid and the notebooks screen (notes is the default).
-- **Search and tags** — Find notes, notebooks, and tags from one screen. Move a note to another notebook, or send selected checklist items to a different note.
-- **Recycle bin** — Restore deleted notes and notebooks.
+- **Search and tags** — Find notes, notebooks, and tags from a full-screen Material 3 search. Move a note to another notebook, or send selected checklist items to a different note.
+- **Recycle bin** — Restore deleted notes and notebooks. Deleting shows an Undo button instead of asking first.
+- **Swipe and filter** — Swipe a note card right to pin it, left to delete it. Chips above the grid show only pinned notes, checklists, or locked notes.
 
 **Private**
 - **Lock** a note or a whole notebook with fingerprint, pattern, PIN, or password. Locked content stays hidden in previews, search, widgets, share targets, and the recents screen until you unlock.
 - **Read-only** — Freeze a text note, checklist, or counter so it cannot be edited by accident.
-- **Encrypted exports** — AES-256-GCM with a password (PBKDF2-SHA256 key), or plain text with none. Automatic backups run in the background and restart after a reboot.
+- **Encrypted exports** — AES-256-GCM with a password (PBKDF2-SHA256 key), or plain text with none. Automatic backups run daily at 06:00; Settings shows the last and next backup and has Back up now.
 
 **Write**
 - Text notes with Markdown preview, checklists, and counter notes with colored +/− buttons.
@@ -42,7 +43,13 @@ The Simple Notes Pro workflow, plus notebooks, locks, and a recycle bin. Still o
 - **Checklist dialogs** — Add and rename keep the text you typed when the phone rotates.
 
 **Home screen**
-- Notes widgets and a notebook widget. Customize widget colors once; every widget updates. A widget shows when its note is deleted and comes back when you restore it.
+- Notes widgets and a notebook widget. Customize widget colors once; every widget updates, or use system colors (Material You) on Android 12+. A widget shows when its note is deleted and comes back when you restore it.
+
+- **Shortcuts** — Long-press the app icon for New note and New checklist.
+
+**Look and feel**
+- Material 3 with a System default (Material You) theme option under Customize colors.
+- Predictive back, smooth transitions between notebooks, notes, and the editor, and TalkBack labels throughout.
 
 **No nags**
 - No donation, rate, or “what’s new” popups. Own app ID (`tomato.notes`) so it can sit next to Simple Notes Pro.
@@ -60,7 +67,7 @@ Release APKs come from `assembleCoreRelease` (local and GitHub Actions). Names:
 | --- | --- |
 | App ID | `tomato.notes` |
 | GitHub repo | [t0ma5/tomato-notes](https://github.com/t0ma5/tomato-notes) |
-| App version | 1.1 (versionCode 101) |
+| App version | 1.2 (versionCode 102) |
 | minSdk | 23 |
 | targetSdk / compileSdk | 36 (Android 16) |
 | JVM bytecode | 17 |
