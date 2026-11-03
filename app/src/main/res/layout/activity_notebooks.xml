@@ -20,22 +20,6 @@
         android:layout_marginTop="?attr/actionBarSize"
         android:orientation="vertical">
 
-        <com.simplemobiletools.commons.views.MyEditText
-            android:id="@+id/notebooks_search"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="@string/search_notes_hint"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:padding="@dimen/activity_margin"
-            android:visibility="gone" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/search_results_list"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
-
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/notebooks_list"
             android:layout_width="match_parent"
@@ -51,5 +35,19 @@
         android:layout_gravity="bottom|end"
         android:layout_margin="@dimen/activity_margin"
         android:src="@drawable/ic_plus_vector" />
+
+    <!-- Material 3 search, opened from the toolbar's search action. Its children go into its results area. -->
+    <com.google.android.material.search.SearchView
+        android:id="@+id/notebooks_search_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:hint="@string/search_notes_hint">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/search_results_list"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false" />
+    </com.google.android.material.search.SearchView>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

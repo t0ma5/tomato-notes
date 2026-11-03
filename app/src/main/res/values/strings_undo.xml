@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Snackbars shown after a delete that can be undone (Recycle bin enabled) -->
+    <string name="note_moved_to_recycle_bin">Moved to recycle bin</string>
+    <string name="notebook_moved_to_recycle_bin">Notebook moved to recycle bin</string>
+</resources>

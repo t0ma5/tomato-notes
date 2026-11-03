@@ -116,6 +116,8 @@ class SettingsActivity : SimpleActivity() {
     private var pendingExportPassword: String? = null
 
     private fun setupCustomizeColors() {
+        // Material You follows the wallpaper only on Android 12+, so only hint at it there
+        binding.settingsColorCustomizationHint.beVisibleIf(isSPlus())
         binding.settingsColorCustomizationHolder.setOnClickListener {
             openColorCustomization()
         }

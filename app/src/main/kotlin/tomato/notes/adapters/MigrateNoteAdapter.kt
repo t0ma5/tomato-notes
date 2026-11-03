@@ -4,6 +4,7 @@ import android.view.View
 import android.view.ViewGroup
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
 import com.simplemobiletools.commons.adapters.MyRecyclerViewAdapter
+import com.simplemobiletools.commons.extensions.adjustAlpha
 import com.simplemobiletools.commons.extensions.beVisibleIf
 import com.simplemobiletools.commons.views.MyRecyclerView
 import tomato.notes.databinding.ItemMigrateNoteBinding
@@ -56,6 +57,9 @@ class MigrateNoteAdapter(
     private fun setupView(view: View, note: Note) {
         ItemMigrateNoteBinding.bind(view).apply {
             migrateNoteTitle.text = note.title
+            migrateNoteTitle.setTextColor(textColor)
+            // Follows the active theme (incl. Material You); 0.7 keeps >= 4.5:1 on light and dark
+            migrateNoteNotebook.setTextColor(textColor.adjustAlpha(0.7f))
             val notebook = notebookMap[note.notebookId]
             migrateNoteNotebook.text = notebook?.title ?: ""
             migrateNoteNotebook.beVisibleIf(notebook != null)

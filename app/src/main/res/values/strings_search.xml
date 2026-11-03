@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Hint of the search field when the notes list shows a single notebook, %s is its title -->
+    <string name="search_in_notebook">Search in %s</string>
+</resources>

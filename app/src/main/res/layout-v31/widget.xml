@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: system corner radius, and the root is @android:id/background so the launcher can animate it -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@android:id/background"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_clip_background"
+    android:clipToOutline="true">
+
+    <ImageView
+        android:id="@+id/notes_widget_background"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
+        android:importantForAccessibility="no"
+        android:src="@drawable/widget_custom_background" />
+
+    <ImageView
+        android:id="@+id/notes_widget_background_dynamic"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
+        android:importantForAccessibility="no"
+        android:src="@drawable/widget_dynamic_background"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_note_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:lines="1"
+        android:paddingStart="@dimen/normal_margin"
+        android:paddingTop="@dimen/small_margin"
+        android:paddingEnd="@dimen/normal_margin"
+        android:paddingBottom="@dimen/tiny_margin"
+        android:textSize="@dimen/smaller_text_size" />
+
+    <ListView
+        android:id="@+id/notes_widget_listview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/widget_note_title"
+        android:clipToPadding="false"
+        android:divider="@null"
+        android:paddingBottom="@dimen/small_margin" />
+
+</RelativeLayout>

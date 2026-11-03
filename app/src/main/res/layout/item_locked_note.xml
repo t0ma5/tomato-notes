@@ -26,6 +26,7 @@
         android:id="@+id/locked_unlocked_image"
         android:layout_width="@dimen/fab_size"
         android:layout_height="@dimen/fab_size"
+        android:contentDescription="@string/a11y_note_locked"
         android:paddingVertical="@dimen/activity_margin"
         android:src="@drawable/ic_lock_vector"
         app:layout_constraintBottom_toBottomOf="parent"

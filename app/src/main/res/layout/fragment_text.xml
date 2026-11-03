@@ -14,6 +14,7 @@
 
         <ImageView
             android:id="@+id/note_locked_image"
+            android:importantForAccessibility="no"
             android:layout_width="@dimen/normal_icon_size"
             android:layout_height="@dimen/normal_icon_size"
             android:layout_centerHorizontal="true"

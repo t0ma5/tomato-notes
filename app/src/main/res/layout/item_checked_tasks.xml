@@ -29,6 +29,7 @@
         android:id="@+id/checked_tasks_chevron"
         android:layout_width="@dimen/checklist_image_size"
         android:layout_height="@dimen/checklist_image_size"
+        android:importantForAccessibility="no"
         android:paddingTop="@dimen/normal_margin"
         android:paddingBottom="@dimen/normal_margin"
         android:src="@drawable/ic_chevron_down_vector"

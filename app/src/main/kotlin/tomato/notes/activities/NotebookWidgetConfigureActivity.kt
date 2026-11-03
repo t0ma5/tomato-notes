@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
 import com.simplemobiletools.commons.dialogs.ColorPickerDialog
@@ -18,10 +19,12 @@ import tomato.notes.databinding.WidgetConfigBinding
 import tomato.notes.extensions.config
 import tomato.notes.extensions.getPercentageFontSize
 import tomato.notes.extensions.unlockNotebookIfNeeded
+import tomato.notes.extensions.updateWidgets
 import tomato.notes.extensions.widgetsDB
 import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.NotebookWidgetProvider
 import tomato.notes.helpers.NotesHelper
+import tomato.notes.helpers.useWidgetDynamicColors
 import tomato.notes.models.Notebook
 import tomato.notes.models.Widget
 
@@ -66,6 +69,7 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
             binding.showNoteTitle.toggle()
             handleNoteTitleDisplay()
         }
+        setupDynamicColors()
     }
 
     override fun onResume() {
@@ -171,15 +175,17 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
 
     private fun updateBackgroundColor() {
         mBgColor = mBgColorWithoutTransparency.adjustAlpha(mBgAlpha)
-        binding.textNoteView.setBackgroundColor(mBgColor)
-        binding.textNoteViewTitle.setBackgroundColor(mBgColor)
+        val previewBgColor = getPreviewBgColor()
+        binding.textNoteView.setBackgroundColor(previewBgColor)
+        binding.textNoteViewTitle.setBackgroundColor(previewBgColor)
         binding.configBgColor.setFillWithStroke(mBgColor, mBgColor)
         binding.configSave.backgroundTintList = ColorStateList.valueOf(getProperPrimaryColor())
     }
 
     private fun updateTextColor() {
-        binding.textNoteView.setTextColor(mTextColor)
-        binding.textNoteViewTitle.setTextColor(mTextColor)
+        val previewTextColor = getPreviewTextColor()
+        binding.textNoteView.setTextColor(previewTextColor)
+        binding.textNoteViewTitle.setTextColor(previewTextColor)
         binding.configTextColor.setFillWithStroke(mTextColor, mTextColor)
         binding.configSave.setTextColor(getProperPrimaryColor().getContrastColor())
     }
@@ -201,6 +207,41 @@ class NotebookWidgetConfigureActivity : SimpleActivity() {
             }
         }
     }
+
+    // Android 12+ only. Global like the widget colors, so it applies to every widget right away.
+    private fun setupDynamicColors() {
+        binding.widgetDynamicColorsHolder.apply {
+            beVisibleIf(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            background = ColorDrawable(getProperBackgroundColor())
+            updateTextColors(this)
+            setOnClickListener {
+                binding.widgetDynamicColors.toggle()
+                config.widgetUseDynamicColors = binding.widgetDynamicColors.isChecked
+                updateWidgets()
+                updateColorPickers()
+                updateBackgroundColor()
+                updateTextColor()
+            }
+        }
+        binding.widgetDynamicColors.isChecked = useWidgetDynamicColors()
+        updateColorPickers()
+    }
+
+    // The custom colors stay stored, the pickers are only greyed out while system colors are used
+    private fun updateColorPickers() {
+        val isEnabled = !useWidgetDynamicColors()
+        arrayOf(binding.configBgColor, binding.configTextColor, binding.configBgSeekbarHolder, binding.configBgSeekbar).forEach {
+            it.isEnabled = isEnabled
+        }
+        arrayOf(binding.configBgColor, binding.configTextColor, binding.configBgSeekbarHolder).forEach {
+            it.alpha = if (isEnabled) 1f else 0.4f
+        }
+    }
+
+    // The preview shows what the widget will look like
+    private fun getPreviewBgColor() = if (useWidgetDynamicColors()) getColor(R.color.widget_dynamic_bg) else mBgColor
+
+    private fun getPreviewTextColor() = if (useWidgetDynamicColors()) getColor(R.color.widget_dynamic_text) else mTextColor
 
     private fun handleNoteTitleDisplay() {
         val showTitle = binding.showNoteTitle.isChecked

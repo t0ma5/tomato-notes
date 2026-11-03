@@ -1,5 +1,10 @@
 package tomato.notes.helpers
 
+import android.app.Activity
+import android.view.View
+import com.google.android.material.snackbar.Snackbar
+import com.simplemobiletools.commons.extensions.getProperBackgroundColor
+import com.simplemobiletools.commons.extensions.getProperTextColor
 import com.simplemobiletools.commons.helpers.PROTECTION_NONE
 import com.simplemobiletools.commons.helpers.ensureBackgroundThread
 import tomato.notes.R
@@ -37,6 +42,8 @@ class RecycleBinHelper(private val context: android.content.Context) {
             if (context.config.useRecycleBin) {
                 context.notesDB.markNotesDeletedInNotebook(notebookId, now)
                 context.notebooksDB.updateDeletedTs(notebookId, now)
+                // restoreNotebook brings back only the notes trashed together with the notebook, by this timestamp
+                notebook.deletedTs = now
             } else {
                 notes.forEach { note ->
                     note.id?.let { context.widgetsDB.deleteNoteWidgets(it) }
@@ -159,5 +166,25 @@ class RecycleBinHelper(private val context: android.content.Context) {
                 callback(hasItems)
             }
         }
+    }
+}
+
+// "Act, then offer Undo": shown right after something was moved to the Recycle bin. Colors are the inverse
+// of the screen's commons colors, so the bar stays readable with any custom or system theme.
+fun Activity.showUndoSnackbar(root: View, message: String, anchor: View? = null, onUndo: () -> Unit) {
+    if (isFinishing || isDestroyed) {
+        return
+    }
+
+    val background = getProperBackgroundColor()
+    Snackbar.make(root, message, Snackbar.LENGTH_LONG).apply {
+        setBackgroundTint(getProperTextColor())
+        setTextColor(background)
+        setActionTextColor(background)
+        if (anchor?.visibility == View.VISIBLE) {
+            setAnchorView(anchor)
+        }
+        setAction(com.simplemobiletools.commons.R.string.undo) { onUndo() }
+        show()
     }
 }

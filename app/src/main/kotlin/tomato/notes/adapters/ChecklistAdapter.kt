@@ -7,6 +7,7 @@ import android.view.Menu
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import com.simplemobiletools.commons.activities.BaseSimpleActivity
@@ -245,6 +246,10 @@ class ChecklistAdapter(
             val collapsed = headerIndex == items.lastIndex
             checkedTasksChevron.rotation = if (collapsed) 180f else 0f
             checkedTasksChevron.applyColorFilter(textColor)
+            ViewCompat.setStateDescription(
+                checkedTasksHolder,
+                root.context.getString(if (collapsed) R.string.a11y_collapsed else R.string.a11y_expanded)
+            )
         }
     }
 
@@ -269,6 +274,11 @@ class ChecklistAdapter(
             checklistImage.setImageDrawable(if (checklistItem.isDone) checkDrawable else crossDrawable)
             checklistImage.beVisibleIf(showIcons && selectedKeys.isEmpty())
             checklistHolder.isSelected = isSelected
+            // TalkBack reads the row as "Buy milk, checked"; the icon itself is decorative
+            ViewCompat.setStateDescription(
+                checklistHolder,
+                root.context.getString(if (checklistItem.isDone) R.string.a11y_checked else R.string.a11y_not_checked)
+            )
 
             checklistDragHandle.beVisibleIf(selectedKeys.isNotEmpty())
             checklistDragHandle.applyColorFilter(textColor)

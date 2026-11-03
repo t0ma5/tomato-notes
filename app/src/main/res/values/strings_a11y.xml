@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility (TalkBack) labels and states -->
+    <string name="a11y_checked">Checked</string>
+    <string name="a11y_not_checked">Not checked</string>
+    <string name="a11y_checklist_item_checked">%1$s, checked</string>
+    <string name="a11y_checklist_item_not_checked">%1$s, not checked</string>
+    <string name="a11y_expanded">Expanded</string>
+    <string name="a11y_collapsed">Collapsed</string>
+    <string name="a11y_reorder_item">Drag to reorder</string>
+    <string name="a11y_increase_counter">Increase %1$s</string>
+    <string name="a11y_decrease_counter">Decrease %1$s</string>
+    <string name="a11y_add_item">Add item</string>
+    <string name="a11y_note_locked">Locked</string>
+    <string name="a11y_note_unlocked">Unlocked</string>
+    <string name="a11y_pinned">Pinned</string>
+    <string name="a11y_customize_colors_system_hint">Includes System default (Material You)</string>
+</resources>

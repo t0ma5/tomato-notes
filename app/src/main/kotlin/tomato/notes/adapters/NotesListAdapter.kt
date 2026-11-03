@@ -4,6 +4,7 @@ import android.text.TextUtils
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.simplemobiletools.commons.extensions.beGoneIf
 import com.simplemobiletools.commons.extensions.beVisibleIf
@@ -15,6 +16,7 @@ import tomato.notes.extensions.applyNoteCardBackground
 import tomato.notes.extensions.getMutedTextColor
 import tomato.notes.helpers.NotebookUnlockSession
 import tomato.notes.helpers.previewLines
+import tomato.notes.R
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
 import java.util.Collections
@@ -64,6 +66,12 @@ class NotesListAdapter(
             noteCardNotebook.text = notebookTitle
             noteCardNotebook.setTextColor(muted)
             noteCardNotebook.beVisibleIf(showNotebookName && notebookTitle.isNotEmpty())
+            // TalkBack reads the card as one item: title, notebook, locked
+            root.contentDescription = listOfNotNull(
+                note.title,
+                notebookTitle.takeIf { showNotebookName && it.isNotEmpty() },
+                context.getString(R.string.a11y_note_locked).takeIf { note.isLocked() }
+            ).joinToString(", ")
             root.setOnClickListener { itemClick(note) }
         }
     }
@@ -79,11 +87,30 @@ class NotesListAdapter(
         view.setTextColor(textColor)
     }
 
+    // DiffUtil so added, removed and moved cards animate instead of the whole grid redrawing
     fun updateItems(newNotes: List<Note>, newNotebooks: Map<Long, Notebook>, showNotebook: Boolean) {
+        val oldNotes = notes
+        val oldNotebooks = notebooksById
+        val oldShowNotebook = showNotebookName
+        val oldVisibility = oldNotes.associate { it.notebookId to NotebookUnlockSession.canShow(oldNotebooks[it.notebookId]) }
         notes = newNotes.toMutableList()
         notebooksById = newNotebooks
         showNotebookName = showNotebook
-        notifyDataSetChanged()
+        DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = oldNotes.size
+
+            override fun getNewListSize() = notes.size
+
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int) = oldNotes[oldItemPosition].id == notes[newItemPosition].id
+
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                val old = oldNotes[oldItemPosition]
+                val new = notes[newItemPosition]
+                return old == new && oldShowNotebook == showNotebookName &&
+                    oldNotebooks[old.notebookId] == notebooksById[new.notebookId] &&
+                    oldVisibility[old.notebookId] == NotebookUnlockSession.canShow(notebooksById[new.notebookId])
+            }
+        }).dispatchUpdatesTo(this)
     }
 
     fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {

@@ -1,18 +1,21 @@
 package tomato.notes.activities
 
+import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.OnBackPressedCallback
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.search.SearchView
 import com.simplemobiletools.commons.dialogs.RadioGroupDialog
-import com.simplemobiletools.commons.extensions.beGone
-import com.simplemobiletools.commons.extensions.beVisible
-import com.simplemobiletools.commons.extensions.beVisibleIf
+import com.simplemobiletools.commons.extensions.getProperBackgroundColor
+import com.simplemobiletools.commons.extensions.getProperPrimaryColor
 import com.simplemobiletools.commons.extensions.hideKeyboard
 import com.simplemobiletools.commons.extensions.onTextChangeListener
-import com.simplemobiletools.commons.extensions.showKeyboard
 import com.simplemobiletools.commons.extensions.toast
 import com.simplemobiletools.commons.extensions.updateTextColors
 import com.simplemobiletools.commons.extensions.viewBinding
@@ -37,6 +40,7 @@ import tomato.notes.helpers.NotebooksHelper
 import tomato.notes.helpers.OPEN_NEW_NOTE_DIALOG
 import tomato.notes.helpers.OPEN_NOTE_ID
 import tomato.notes.helpers.RecycleBinHelper
+import tomato.notes.helpers.applyProperColors
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
 
@@ -45,7 +49,6 @@ class NotesListActivity : SimpleActivity() {
     private var adapter: NotesListAdapter? = null
     private var searchAdapter: SearchResultsAdapter? = null
     private var itemTouchHelper: ItemTouchHelper? = null
-    private var searchVisible = false
     private var filterNotebookId = 0L
     private var pendingNewNotePrompt = false
     private var notebooksById = emptyMap<Long, Notebook>()
@@ -55,28 +58,44 @@ class NotesListActivity : SimpleActivity() {
     private var isFilterNotebookUnlocked = false
     private var isUnlockPromptShowing = false
 
+    // Search: the tag whose notes are listed (null for a text search), and a counter that drops stale results
+    private var searchTag: String? = null
+    private var searchGeneration = 0
+    private var isSettingSearchText = false
+
+    private var useSharedAxisMotion = false
+    private var skipCloseMotion = false
+
+    // Enabled only while the search is open, so otherwise back (and its predictive animation) leaves the screen
+    private val searchBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            closeSearch()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         isMaterialActivity = true
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
+        useSharedAxisMotion = setupSharedAxisTransitions()
         updateMaterialActivityViews(binding.notesListCoordinator, null, useTransparentNavigation = true, useTopSearchMenu = false)
-        binding.searchResultsList.clipToPadding = false
         applyBottomInsetsAsPadding(binding.notesList)
         applyBottomInsetsAsPadding(binding.searchResultsList)
         applyBottomInsetsAsMargin(binding.newNoteFab)
+        onBackPressedDispatcher.addCallback(this, searchBackCallback)
         applyIntent(intent)
 
         binding.notesListToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.search -> {
-                    toggleSearch()
+                    openSearch()
                     true
                 }
                 R.id.switch_to_notebooks -> {
                     if (filterNotebookId > 0L) {
                         config.showNotebooks = false
-                        startActivity(Intent(this, NotesListActivity::class.java))
-                        finish()
+                        startActivityWithSharedAxis(Intent(this, NotesListActivity::class.java))
+                        finishWithoutCloseMotion()
                     } else {
                         switchToNotebooks()
                     }
@@ -136,14 +155,7 @@ class NotesListActivity : SimpleActivity() {
         })
         itemTouchHelper?.attachToRecyclerView(binding.notesList)
 
-        searchAdapter = SearchResultsAdapter(emptyList()) { result ->
-            openSearchResult(result)
-        }
-        binding.searchResultsList.layoutManager = LinearLayoutManager(this)
-        binding.searchResultsList.adapter = searchAdapter
-        binding.notesListSearch.onTextChangeListener { query ->
-            performSearch(query)
-        }
+        setupSearch()
 
         binding.newNoteFab.setOnClickListener {
             promptNewNote()
@@ -181,9 +193,25 @@ class NotesListActivity : SimpleActivity() {
                     promptNewNote()
                 }
             }
+            // a notebook may have been locked again while the app was away, so its notes leave the results
+            refreshSearchResults()
         }
         RecycleBinHelper(this).emptyOldItems()
         updateTextColors(binding.notesListCoordinator)
+        updateSearchColors()
+    }
+
+    override fun finish() {
+        super.finish()
+        if (useSharedAxisMotion && !skipCloseMotion) {
+            overrideSharedAxisCloseMotion()
+        }
+    }
+
+    // Replaces this screen with another one, which slides in like a forward step
+    private fun finishWithoutCloseMotion() {
+        skipCloseMotion = true
+        finish()
     }
 
     private fun persistNoteOrder(notes: List<Note>) {
@@ -208,6 +236,7 @@ class NotesListActivity : SimpleActivity() {
             filterNotebook = null
             isFilterNotebookUnlocked = false
             adapter?.updateItems(emptyList(), emptyMap(), showNotebook = filterNotebookId == 0L)
+            closeSearch()
         }
         pendingNewNotePrompt = intent.getBooleanExtra(OPEN_NEW_NOTE_DIALOG, false)
         intent.removeExtra(OPEN_NEW_NOTE_DIALOG)
@@ -248,9 +277,7 @@ class NotesListActivity : SimpleActivity() {
 
             isFilterNotebookUnlocked = false
             adapter?.updateItems(emptyList(), emptyMap(), showNotebook = false)
-            if (searchVisible) {
-                toggleSearch()
-            }
+            closeSearch()
 
             if (!isUnlockPromptShowing) {
                 isUnlockPromptShowing = true
@@ -269,13 +296,10 @@ class NotesListActivity : SimpleActivity() {
     private fun canShowFilteredContent() = filterNotebookId <= 0L || isFilterNotebookUnlocked
 
     private fun switchToNotebooks() {
-        if (searchVisible) {
-            toggleSearch()
-        }
         hideKeyboard()
         config.showNotebooks = true
-        startActivity(Intent(this, NotebooksActivity::class.java))
-        finish()
+        startActivityWithSharedAxis(Intent(this, NotebooksActivity::class.java))
+        finishWithoutCloseMotion()
     }
 
     private fun refreshNotes(onDone: (() -> Unit)? = null) {
@@ -303,11 +327,20 @@ class NotesListActivity : SimpleActivity() {
     }
 
     private fun updateTitle() {
+        val notebookTitle = notebooksById[filterNotebookId]?.title
         binding.notesListToolbar.title = if (filterNotebookId > 0L) {
-            notebooksById[filterNotebookId]?.title ?: getString(R.string.notebooks)
+            notebookTitle ?: getString(R.string.notebooks)
         } else {
             getString(R.string.app_launcher_name)
         }
+
+        binding.notesListSearchView.setHint(
+            if (filterNotebookId > 0L && notebookTitle != null) {
+                getString(R.string.search_in_notebook, notebookTitle)
+            } else {
+                getString(R.string.search_notes_hint)
+            }
+        )
     }
 
     private fun promptNewNote() {
@@ -369,7 +402,7 @@ class NotesListActivity : SimpleActivity() {
         Intent(this, MainActivity::class.java).apply {
             putExtra(NOTEBOOK_ID, note.notebookId)
             putExtra(OPEN_NOTE_ID, note.id)
-            startActivity(this)
+            startActivityWithSharedAxis(this)
         }
     }
 
@@ -383,7 +416,7 @@ class NotesListActivity : SimpleActivity() {
         config.currentNotebookId = notebook.id ?: 0L
         Intent(this, NotesListActivity::class.java).apply {
             putExtra(NOTEBOOK_ID, config.currentNotebookId)
-            startActivity(this)
+            startActivityWithSharedAxis(this)
         }
     }
 
@@ -405,51 +438,130 @@ class NotesListActivity : SimpleActivity() {
                     items.add(RadioItem(index, tag))
                 }
                 RadioGroupDialog(this, items) {
-                    val tag = tags[it as Int]
-                    searchVisible = true
-                    binding.notesListSearch.beVisible()
-                    binding.notesListSearch.setText(tag)
-                    ensureBackgroundThread {
-                        val results = NoteSearchHelper(this).notesWithTag(tag).filterForCurrentNotebook()
-                        runOnUiThread {
-                            searchAdapter?.updateItems(results)
-                            binding.notesList.beGone()
-                            binding.searchResultsList.beVisible()
-                            binding.newNoteFab.beGone()
-                        }
-                    }
+                    showTagResults(tags[it as Int])
                 }
             }
         }
     }
 
-    private fun toggleSearch() {
-        searchVisible = !searchVisible
-        binding.notesListSearch.beVisibleIf(searchVisible)
-        if (searchVisible) {
-            binding.notesListSearch.requestFocus()
-            showKeyboard(binding.notesListSearch)
-        } else {
-            hideKeyboard()
-            binding.notesListSearch.setText("")
-            showNotesList()
+    private fun setupSearch() {
+        searchAdapter = SearchResultsAdapter(emptyList()) { result ->
+            openSearchResult(result)
+        }
+        binding.searchResultsList.layoutManager = LinearLayoutManager(this)
+        binding.searchResultsList.adapter = searchAdapter
+
+        binding.notesListSearchView.apply {
+            // commons already keeps the whole screen below the status bar
+            setStatusBarSpacerEnabled(false)
+            editText.onTextChangeListener { query ->
+                if (!isSettingSearchText) {
+                    searchTag = null
+                    performSearch(query)
+                }
+            }
+            addTransitionListener { _, _, newState ->
+                onSearchStateChanged(newState)
+            }
+        }
+    }
+
+    // The SearchView shows the keyboard itself once it is open
+    private fun openSearch() {
+        if (canShowFilteredContent()) {
+            binding.notesListSearchView.show()
+        }
+    }
+
+    private fun closeSearch() {
+        searchGeneration++
+        searchAdapter?.updateItems(emptyList())
+        if (binding.notesListSearchView.isShowing) {
+            binding.notesListSearchView.hide()
+        }
+    }
+
+    private fun onSearchStateChanged(newState: SearchView.TransitionState) {
+        val isOpen = newState == SearchView.TransitionState.SHOWING || newState == SearchView.TransitionState.SHOWN
+        searchBackCallback.isEnabled = isOpen
+        when (newState) {
+            SearchView.TransitionState.SHOWING -> updateSearchColors()
+            SearchView.TransitionState.HIDING -> updateStatusbarColor(getProperPrimaryColor())
+            SearchView.TransitionState.HIDDEN -> {
+                searchTag = null
+                searchGeneration++
+                setSearchText("")
+                searchAdapter?.updateItems(emptyList())
+                updateStatusbarColor(getProperPrimaryColor())
+            }
+            else -> {}
+        }
+    }
+
+    private fun updateSearchColors() {
+        binding.notesListSearchView.applyProperColors()
+        if (binding.notesListSearchView.isShowing) {
+            updateStatusbarColor(getProperBackgroundColor())
+        }
+    }
+
+    private fun setSearchText(text: String) {
+        isSettingSearchText = true
+        binding.notesListSearchView.editText.setText(text)
+        binding.notesListSearchView.editText.setSelection(text.length)
+        isSettingSearchText = false
+    }
+
+    private fun showTagResults(tag: String) {
+        if (!canShowFilteredContent()) {
+            return
+        }
+
+        searchTag = tag
+        setSearchText(tag)
+        binding.notesListSearchView.show()
+        loadTagResults(tag)
+    }
+
+    private fun loadTagResults(tag: String) {
+        val generation = ++searchGeneration
+        ensureBackgroundThread {
+            val results = NoteSearchHelper(this).notesWithTag(tag).filterForCurrentNotebook()
+            runOnUiThread {
+                if (generation == searchGeneration && canShowFilteredContent()) {
+                    searchAdapter?.updateItems(results)
+                }
+            }
         }
     }
 
     private fun performSearch(query: String) {
-        if (!searchVisible || query.isBlank() || !canShowFilteredContent()) {
-            showNotesList()
+        val generation = ++searchGeneration
+        if (query.isBlank() || !canShowFilteredContent()) {
+            searchAdapter?.updateItems(emptyList())
             return
         }
 
         ensureBackgroundThread {
             val results = NoteSearchHelper(this).search(query).filterForCurrentNotebook()
             runOnUiThread {
-                searchAdapter?.updateItems(results)
-                binding.notesList.beGone()
-                binding.searchResultsList.beVisible()
-                binding.newNoteFab.beGone()
+                if (generation == searchGeneration && canShowFilteredContent()) {
+                    searchAdapter?.updateItems(results)
+                }
             }
+        }
+    }
+
+    private fun refreshSearchResults() {
+        if (!binding.notesListSearchView.isShowing) {
+            return
+        }
+
+        val tag = searchTag
+        if (tag != null) {
+            loadTagResults(tag)
+        } else {
+            performSearch(binding.notesListSearchView.editText.text.toString())
         }
     }
 
@@ -462,19 +574,60 @@ class NotesListActivity : SimpleActivity() {
         }
     }
 
-    private fun showNotesList() {
-        binding.searchResultsList.beGone()
-        binding.notesList.beVisible()
-        binding.newNoteFab.beVisible()
-        searchAdapter?.updateItems(emptyList())
-    }
-
+    // The search stays open behind the opened item, so back returns to the same results
     private fun openSearchResult(result: NoteSearchResult) {
+        hideKeyboard()
         if (result.notebook != null) {
             openNotebook(result.notebook)
             return
         }
         val note = result.note ?: return
         openNote(note)
+    }
+}
+
+// Material shared axis X motion between the notebooks, notes list and note editor screens. Before API 34 the
+// caller sets it per call; from API 34 the opened screen sets it once with overrideActivityTransition, which
+// also drives the predictive back animation. It is skipped while the system animations are turned off.
+private const val SHARED_AXIS_MOTION = "shared_axis_motion"
+
+internal fun Activity.areSystemAnimationsEnabled() =
+    Settings.Global.getFloat(contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
+
+internal fun Activity.startActivityWithSharedAxis(intent: Intent) {
+    val animate = areSystemAnimationsEnabled()
+    if (animate) {
+        intent.putExtra(SHARED_AXIS_MOTION, true)
+    }
+
+    startActivity(intent)
+    if (animate && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        @Suppress("DEPRECATION")
+        overridePendingTransition(R.anim.shared_axis_x_forward_enter, R.anim.shared_axis_x_forward_exit)
+    }
+}
+
+// Call from onCreate (and onNewIntent for reused screens). Returns whether the screen was opened with the
+// shared axis motion, then its finish() should call overrideSharedAxisCloseMotion().
+internal fun Activity.setupSharedAxisTransitions(): Boolean {
+    val useMotion = intent?.getBooleanExtra(SHARED_AXIS_MOTION, false) == true && areSystemAnimationsEnabled()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (useMotion) {
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN, R.anim.shared_axis_x_forward_enter, R.anim.shared_axis_x_forward_exit)
+            overrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE, R.anim.shared_axis_x_backward_enter, R.anim.shared_axis_x_backward_exit)
+        } else {
+            // a reused screen reached from a widget or shortcut keeps the system transitions
+            clearOverrideActivityTransition(Activity.OVERRIDE_TRANSITION_OPEN)
+            clearOverrideActivityTransition(Activity.OVERRIDE_TRANSITION_CLOSE)
+        }
+    }
+    return useMotion
+}
+
+// Before API 34 the close motion is set right after finish(); from API 34 setupSharedAxisTransitions did it
+internal fun Activity.overrideSharedAxisCloseMotion() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE && areSystemAnimationsEnabled()) {
+        @Suppress("DEPRECATION")
+        overridePendingTransition(R.anim.shared_axis_x_backward_enter, R.anim.shared_axis_x_backward_exit)
     }
 }

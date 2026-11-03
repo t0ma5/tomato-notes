@@ -2,10 +2,12 @@ package tomato.notes.activities
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.OnBackPressedCallback
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.search.SearchView
 import com.simplemobiletools.commons.dialogs.ConfirmationDialog
 import com.simplemobiletools.commons.dialogs.SecurityDialog
 import com.simplemobiletools.commons.extensions.*
@@ -31,6 +33,8 @@ import tomato.notes.helpers.OPEN_NOTE_ID
 import tomato.notes.helpers.NotebooksHelper
 import tomato.notes.helpers.NotesHelper
 import tomato.notes.helpers.RecycleBinHelper
+import tomato.notes.helpers.applyProperColors
+import tomato.notes.helpers.showUndoSnackbar
 import tomato.notes.models.Note
 import tomato.notes.models.Notebook
 
@@ -39,23 +43,38 @@ class NotebooksActivity : SimpleActivity() {
     private var adapter: NotebooksAdapter? = null
     private var searchAdapter: SearchResultsAdapter? = null
     private var itemTouchHelper: ItemTouchHelper? = null
-    private var searchVisible = false
+
+    // Search: the tag whose notes are listed (null for a text search), and a counter that drops stale results
+    private var searchTag: String? = null
+    private var searchGeneration = 0
+    private var isSettingSearchText = false
+
+    private var useSharedAxisMotion = false
+    private var skipCloseMotion = false
+
+    // Enabled only while the search is open, so otherwise back (and its predictive animation) leaves the screen
+    private val searchBackCallback = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            closeSearch()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         isMaterialActivity = true
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
+        useSharedAxisMotion = setupSharedAxisTransitions()
 
         updateMaterialActivityViews(binding.notebooksCoordinator, null, useTransparentNavigation = true, useTopSearchMenu = false)
-        binding.searchResultsList.clipToPadding = false
         applyBottomInsetsAsPadding(binding.notebooksList)
         applyBottomInsetsAsPadding(binding.searchResultsList)
         applyBottomInsetsAsMargin(binding.newNotebookFab)
+        onBackPressedDispatcher.addCallback(this, searchBackCallback)
 
         binding.notebooksToolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.search -> {
-                    toggleSearch()
+                    binding.notebooksSearchView.show()
                     true
                 }
                 R.id.switch_to_notes -> {
@@ -94,14 +113,7 @@ class NotebooksActivity : SimpleActivity() {
         )
         binding.notebooksList.adapter = adapter
 
-        searchAdapter = SearchResultsAdapter(emptyList()) { result ->
-            openSearchResult(result)
-        }
-        binding.searchResultsList.layoutManager = LinearLayoutManager(this)
-        binding.searchResultsList.adapter = searchAdapter
-        binding.notebooksSearch.onTextChangeListener { query ->
-            performSearch(query)
-        }
+        setupSearch()
 
         itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
@@ -143,17 +155,26 @@ class NotebooksActivity : SimpleActivity() {
 
         (binding.notebooksList.layoutManager as? GridLayoutManager)?.spanCount = config.notebookColumns
         refreshNotebooks()
+        // a notebook may have been locked again while the app was away, so its notes leave the results
+        refreshSearchResults()
         RecycleBinHelper(this).emptyOldItems()
         updateTextColors(binding.notebooksCoordinator)
+        updateSearchColors()
+    }
+
+    override fun finish() {
+        super.finish()
+        if (useSharedAxisMotion && !skipCloseMotion) {
+            overrideSharedAxisCloseMotion()
+        }
     }
 
     private fun switchToNotes() {
-        if (searchVisible) {
-            toggleSearch()
-        }
         hideKeyboard()
         config.showNotebooks = false
-        startActivity(Intent(this, NotesListActivity::class.java))
+        startActivityWithSharedAxis(Intent(this, NotesListActivity::class.java))
+        // replaced by the notes list, which slides in like a forward step
+        skipCloseMotion = true
         finish()
     }
 
@@ -177,7 +198,7 @@ class NotebooksActivity : SimpleActivity() {
         config.currentNotebookId = notebook.id ?: 0L
         Intent(this, NotesListActivity::class.java).apply {
             putExtra(NOTEBOOK_ID, config.currentNotebookId)
-            startActivity(this)
+            startActivityWithSharedAxis(this)
         }
     }
 
@@ -188,7 +209,7 @@ class NotebooksActivity : SimpleActivity() {
             if (promptForFirstNote) {
                 putExtra(OPEN_NEW_NOTE_DIALOG, true)
             }
-            startActivity(this)
+            startActivityWithSharedAxis(this)
         }
     }
 
@@ -252,7 +273,21 @@ class NotebooksActivity : SimpleActivity() {
         }
     }
 
+    // A locked notebook asks for its lock first, even if it was unlocked earlier in this session.
+    // With the Recycle bin on, the delete can be undone, so it happens at once and a snackbar offers Undo.
+    // A permanent delete still asks first.
     private fun deleteNotebook(notebook: Notebook) {
+        unlockNotebookIfNeeded(notebook, force = true) {
+            deleteUnlockedNotebook(notebook)
+        }
+    }
+
+    private fun deleteUnlockedNotebook(notebook: Notebook) {
+        if (config.useRecycleBin) {
+            doDeleteNotebook(notebook)
+            return
+        }
+
         val notebookTitle = notebook.title
         val message = String.format(getString(R.string.delete_notebook_prompt_message), notebookTitle)
         com.simplemobiletools.commons.dialogs.ConfirmationDialog(
@@ -262,20 +297,37 @@ class NotebooksActivity : SimpleActivity() {
             com.simplemobiletools.commons.R.string.ok,
             com.simplemobiletools.commons.R.string.cancel
         ) {
-            val notebookId = notebook.id ?: return@ConfirmationDialog
-            RecycleBinHelper(this).deleteNotebook(notebook) {
-                if (config.useRecycleBin) {
-                    toast(R.string.moved_to_recycle_bin)
+            doDeleteNotebook(notebook)
+        }
+    }
+
+    private fun doDeleteNotebook(notebook: Notebook) {
+        val notebookId = notebook.id ?: return
+        val useRecycleBin = config.useRecycleBin
+        RecycleBinHelper(this).deleteNotebook(notebook) {
+            if (useRecycleBin) {
+                showUndoSnackbar(binding.notebooksCoordinator, getString(R.string.notebook_moved_to_recycle_bin), binding.newNotebookFab) {
+                    undoDeleteNotebook(notebook)
                 }
-                if (config.currentNotebookId == notebookId) {
-                    ensureBackgroundThread {
-                        val nextId = notebooksDB.getNotebooks().firstOrNull()?.id ?: 0L
-                        config.currentNotebookId = nextId
-                        runOnUiThread { refreshNotebooks() }
-                    }
-                } else {
-                    refreshNotebooks()
+            }
+            if (config.currentNotebookId == notebookId) {
+                ensureBackgroundThread {
+                    val nextId = notebooksDB.getNotebooks().firstOrNull()?.id ?: 0L
+                    config.currentNotebookId = nextId
+                    runOnUiThread { refreshNotebooks() }
                 }
+            } else {
+                refreshNotebooks()
+            }
+        }
+    }
+
+    // Only clears the deleted marks, so the notebook keeps its pin, order and lock, and gets back
+    // exactly the notes that were trashed with it
+    private fun undoDeleteNotebook(notebook: Notebook) {
+        RecycleBinHelper(this).restoreNotebook(notebook) {
+            if (!isFinishing && !isDestroyed) {
+                refreshNotebooks()
             }
         }
     }
@@ -330,62 +382,126 @@ class NotebooksActivity : SimpleActivity() {
                     items.add(com.simplemobiletools.commons.models.RadioItem(index, tag))
                 }
                 com.simplemobiletools.commons.dialogs.RadioGroupDialog(this, items) {
-                    val tag = tags[it as Int]
-                    searchVisible = true
-                    binding.notebooksSearch.beVisible()
-                    binding.notebooksSearch.setText(tag)
-                    ensureBackgroundThread {
-                        val results = NoteSearchHelper(this).notesWithTag(tag)
-                        runOnUiThread {
-                            searchAdapter?.updateItems(results)
-                            binding.notebooksList.beGone()
-                            binding.searchResultsList.beVisible()
-                            binding.newNotebookFab.beGone()
-                        }
-                    }
+                    showTagResults(tags[it as Int])
                 }
             }
         }
     }
 
-    private fun toggleSearch() {
-        searchVisible = !searchVisible
-        binding.notebooksSearch.beVisibleIf(searchVisible)
-        if (searchVisible) {
-            binding.notebooksSearch.requestFocus()
-            showKeyboard(binding.notebooksSearch)
-        } else {
-            hideKeyboard()
-            binding.notebooksSearch.setText("")
-            showNotebooksList()
+    // Material SearchView opened from the toolbar's search action. It shows the keyboard itself once it opens.
+    private fun setupSearch() {
+        searchAdapter = SearchResultsAdapter(emptyList()) { result ->
+            openSearchResult(result)
+        }
+        binding.searchResultsList.layoutManager = LinearLayoutManager(this)
+        binding.searchResultsList.adapter = searchAdapter
+
+        binding.notebooksSearchView.apply {
+            // commons already keeps the whole screen below the status bar
+            setStatusBarSpacerEnabled(false)
+            editText.onTextChangeListener { query ->
+                if (!isSettingSearchText) {
+                    searchTag = null
+                    performSearch(query)
+                }
+            }
+            addTransitionListener { _, _, newState ->
+                onSearchStateChanged(newState)
+            }
+        }
+    }
+
+    private fun closeSearch() {
+        searchGeneration++
+        searchAdapter?.updateItems(emptyList())
+        if (binding.notebooksSearchView.isShowing) {
+            binding.notebooksSearchView.hide()
+        }
+    }
+
+    private fun onSearchStateChanged(newState: SearchView.TransitionState) {
+        val isOpen = newState == SearchView.TransitionState.SHOWING || newState == SearchView.TransitionState.SHOWN
+        searchBackCallback.isEnabled = isOpen
+        when (newState) {
+            SearchView.TransitionState.SHOWING -> updateSearchColors()
+            SearchView.TransitionState.HIDING -> updateStatusbarColor(getProperPrimaryColor())
+            SearchView.TransitionState.HIDDEN -> {
+                searchTag = null
+                searchGeneration++
+                setSearchText("")
+                searchAdapter?.updateItems(emptyList())
+                updateStatusbarColor(getProperPrimaryColor())
+            }
+            else -> {}
+        }
+    }
+
+    private fun updateSearchColors() {
+        binding.notebooksSearchView.applyProperColors()
+        if (binding.notebooksSearchView.isShowing) {
+            updateStatusbarColor(getProperBackgroundColor())
+        }
+    }
+
+    private fun setSearchText(text: String) {
+        isSettingSearchText = true
+        binding.notebooksSearchView.editText.setText(text)
+        binding.notebooksSearchView.editText.setSelection(text.length)
+        isSettingSearchText = false
+    }
+
+    private fun showTagResults(tag: String) {
+        searchTag = tag
+        setSearchText(tag)
+        binding.notebooksSearchView.show()
+        loadTagResults(tag)
+    }
+
+    private fun loadTagResults(tag: String) {
+        val generation = ++searchGeneration
+        ensureBackgroundThread {
+            val results = NoteSearchHelper(this).notesWithTag(tag)
+            runOnUiThread {
+                if (generation == searchGeneration) {
+                    searchAdapter?.updateItems(results)
+                }
+            }
         }
     }
 
     private fun performSearch(query: String) {
-        if (!searchVisible || query.isBlank()) {
-            showNotebooksList()
+        val generation = ++searchGeneration
+        if (query.isBlank()) {
+            searchAdapter?.updateItems(emptyList())
             return
         }
 
         ensureBackgroundThread {
             val results = NoteSearchHelper(this).search(query)
             runOnUiThread {
-                searchAdapter?.updateItems(results)
-                binding.notebooksList.beGone()
-                binding.searchResultsList.beVisible()
-                binding.newNotebookFab.beGone()
+                if (generation == searchGeneration) {
+                    searchAdapter?.updateItems(results)
+                }
             }
         }
     }
 
-    private fun showNotebooksList() {
-        binding.searchResultsList.beGone()
-        binding.notebooksList.beVisible()
-        binding.newNotebookFab.beVisible()
-        searchAdapter?.updateItems(emptyList())
+    private fun refreshSearchResults() {
+        if (!binding.notebooksSearchView.isShowing) {
+            return
+        }
+
+        val tag = searchTag
+        if (tag != null) {
+            loadTagResults(tag)
+        } else {
+            performSearch(binding.notebooksSearchView.editText.text.toString())
+        }
     }
 
+    // The search stays open behind the opened item, so back returns to the same results
     private fun openSearchResult(result: tomato.notes.helpers.NoteSearchResult) {
+        hideKeyboard()
         if (result.notebook != null) {
             openNotebook(result.notebook)
             return
@@ -407,7 +523,7 @@ class NotebooksActivity : SimpleActivity() {
         Intent(this, MainActivity::class.java).apply {
             putExtra(NOTEBOOK_ID, note.notebookId)
             putExtra(OPEN_NOTE_ID, note.id)
-            startActivity(this)
+            startActivityWithSharedAxis(this)
         }
     }
 }

@@ -1,10 +1,13 @@
 package tomato.notes.adapters
 
+import android.graphics.Rect
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.TouchDelegate
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.hypot
 import com.simplemobiletools.commons.extensions.applyColorFilter
@@ -68,7 +71,17 @@ class NotebooksAdapter(
                 notebookPinnedIcon.applyColorFilter(primary)
             }
 
+            // TalkBack reads the card as one item: title, pinned, locked, note count
+            root.contentDescription = listOfNotNull(
+                notebook.title,
+                context.getString(R.string.a11y_pinned).takeIf { notebook.isPinned() },
+                context.getString(R.string.a11y_note_locked).takeIf { notebook.isLocked() },
+                notebookNoteCount.text
+            ).joinToString(", ")
+
             notebookDragHandle.applyColorFilter(muted)
+            notebookDragHandle.contentDescription = context.getString(R.string.a11y_reorder_item)
+            notebookDragHandle.expandTouchAreaTo48dp()
             val touchSlop = ViewConfiguration.get(root.context).scaledTouchSlop
             notebookDragHandle.setOnTouchListener { _, event ->
                 when (event.actionMasked) {
@@ -106,10 +119,25 @@ class NotebooksAdapter(
 
     override fun getItemCount() = notebooks.size
 
+    // DiffUtil so added, removed and moved cards animate instead of the whole grid redrawing
     fun updateItems(newNotebooks: List<Notebook>, newNoteCounts: Map<Long, Int> = noteCounts) {
+        val oldNotebooks = notebooks
+        val oldNoteCounts = noteCounts
         notebooks = newNotebooks.toMutableList()
         noteCounts = newNoteCounts
-        notifyDataSetChanged()
+        DiffUtil.calculateDiff(object : DiffUtil.Callback() {
+            override fun getOldListSize() = oldNotebooks.size
+
+            override fun getNewListSize() = notebooks.size
+
+            override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int) = oldNotebooks[oldItemPosition].id == notebooks[newItemPosition].id
+
+            override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                val old = oldNotebooks[oldItemPosition]
+                val new = notebooks[newItemPosition]
+                return old == new && oldNoteCounts[old.id] == noteCounts[new.id]
+            }
+        }).dispatchUpdatesTo(this)
     }
 
     fun onItemMove(fromPosition: Int, toPosition: Int): Boolean {
@@ -134,5 +162,19 @@ class NotebooksAdapter(
 
     fun onDragFinished() {
         itemsReordered(notebooks)
+    }
+}
+
+// Grows the touch area to at least 48dp without changing how the view looks
+private fun View.expandTouchAreaTo48dp() {
+    val parentView = parent as? View ?: return
+    parentView.post {
+        val minSize = (48 * resources.displayMetrics.density).toInt()
+        val rect = Rect()
+        getHitRect(rect)
+        val extraX = ((minSize - rect.width()) / 2).coerceAtLeast(0)
+        val extraY = ((minSize - rect.height()) / 2).coerceAtLeast(0)
+        rect.inset(-extraX, -extraY)
+        parentView.touchDelegate = TouchDelegate(rect, this)
     }
 }

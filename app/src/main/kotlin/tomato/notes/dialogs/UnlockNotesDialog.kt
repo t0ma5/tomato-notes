@@ -14,7 +14,8 @@ class UnlockNotesDialog(val activity: BaseSimpleActivity, val notes: List<Note>,
     private val binding = DialogUnlockNotesBinding.inflate(activity.layoutInflater)
     private val view = binding.root
     private val redColor = activity.getColor(com.simplemobiletools.commons.R.color.md_red)
-    private val greenColor = activity.getColor(com.simplemobiletools.commons.R.color.md_green)
+    // md_green_700: md_green is only 2.8:1 on light backgrounds
+    private val greenColor = activity.getColor(com.simplemobiletools.commons.R.color.md_green_700)
     private val unlockedNoteIds = mutableListOf<Long>()
 
     init {
@@ -52,6 +53,7 @@ class UnlockNotesDialog(val activity: BaseSimpleActivity, val notes: List<Note>,
                             lockedUnlockedImage.apply {
                                 setImageResource(R.drawable.ic_lock_open_vector)
                                 applyColorFilter(greenColor)
+                                contentDescription = activity.getString(R.string.a11y_note_unlocked)
                             }
                             updatePositiveButton()
                         }
@@ -61,6 +63,7 @@ class UnlockNotesDialog(val activity: BaseSimpleActivity, val notes: List<Note>,
                     lockedUnlockedImage.apply {
                         setImageResource(com.simplemobiletools.commons.R.drawable.ic_lock_vector)
                         applyColorFilter(redColor)
+                        contentDescription = activity.getString(R.string.a11y_note_locked)
                     }
                     updatePositiveButton()
                 }

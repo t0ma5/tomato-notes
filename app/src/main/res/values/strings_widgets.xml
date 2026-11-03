@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <!-- Widget settings and the Android 12+ widget picker -->
+    <string name="widget_use_dynamic_colors">Use system colors (Material You)</string>
+    <string name="widget_note_description">Shows a note, checklist or counter on your home screen</string>
+    <string name="widget_notebook_description">Lists the notes of a notebook on your home screen</string>
+
+    <!-- Sample content shown in the widget picker preview -->
+    <string name="widget_preview_note_title">Shopping list</string>
+    <string name="widget_preview_note_content">Milk\nBread\nCoffee beans\nTomatoes</string>
+    <string name="widget_preview_notebook_title">Personal</string>
+    <string name="widget_preview_notebook_note_1">Ideas</string>
+    <string name="widget_preview_notebook_note_2">Travel plans</string>
+    <string name="widget_preview_notebook_note_3">Recipes</string>
+</resources>

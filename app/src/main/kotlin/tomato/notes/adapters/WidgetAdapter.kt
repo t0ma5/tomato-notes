@@ -39,6 +39,7 @@ class WidgetAdapter(val context: Context, val intent: Intent) : RemoteViewsServi
         isLenient = true
     }
     private var widgetTextColor = DEFAULT_WIDGET_TEXT_COLOR
+    private var useDynamicColors = false
     private var note: Note? = null
     private var checklistItems = mutableListOf<ChecklistItem>()
     private var counterItems = mutableListOf<CounterItem>()
@@ -80,9 +81,11 @@ class WidgetAdapter(val context: Context, val intent: Intent) : RemoteViewsServi
                 val widgetNewTextColor = if (isDone) widgetTextColor.adjustAlpha(DONE_CHECKLIST_ITEM_ALPHA) else widgetTextColor
                 val paintFlags = if (isDone) Paint.STRIKE_THRU_TEXT_FLAG or Paint.ANTI_ALIAS_FLAG else Paint.ANTI_ALIAS_FLAG
 
+                val dynamicColorRes = if (isDone) R.color.widget_dynamic_text_done else R.color.widget_dynamic_text
+
                 for (id in checklistIds) {
                     setText(id, checklistItem.title)
-                    setTextColor(id, widgetNewTextColor)
+                    applyWidgetTextColor(id, widgetNewTextColor, useDynamicColors, dynamicColorRes)
                     setTextSize(id, textSize)
                     setInt(id, "setPaintFlags", paintFlags)
                     setViewVisibility(id, View.GONE)
@@ -111,7 +114,7 @@ class WidgetAdapter(val context: Context, val intent: Intent) : RemoteViewsServi
         return RemoteViews(context.packageName, R.layout.widget_text_layout).apply {
             for (id in textIds) {
                 setText(id, text)
-                setTextColor(id, widgetTextColor)
+                applyWidgetTextColor(id, widgetTextColor, useDynamicColors)
                 setTextSize(id, textSize)
                 setViewVisibility(id, View.GONE)
             }
@@ -160,6 +163,8 @@ class WidgetAdapter(val context: Context, val intent: Intent) : RemoteViewsServi
 
     override fun onDataSetChanged() {
         widgetTextColor = intent.getIntExtra(WIDGET_TEXT_COLOR, DEFAULT_WIDGET_TEXT_COLOR)
+        // Read on every refresh, so toggling it in the widget settings recolors the rows too
+        useDynamicColors = context.useWidgetDynamicColors()
         placeholder = null
         placeholderOpenNoteId = 0L
         note = null

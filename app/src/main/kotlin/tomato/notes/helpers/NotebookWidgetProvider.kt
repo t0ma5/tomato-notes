@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
-import com.simplemobiletools.commons.extensions.applyColorFilter
 import com.simplemobiletools.commons.extensions.getLaunchIntent
 import com.simplemobiletools.commons.extensions.setText
 import com.simplemobiletools.commons.extensions.setVisibleIf
@@ -44,11 +43,12 @@ class NotebookWidgetProvider : AppWidgetProvider() {
                 val widget = storedWidget ?: getMissingWidget(context, widgetId)
                 val views = RemoteViews(context.packageName, R.layout.widget)
                 val notebook = context.notebooksDB.getNotebookWithId(widget.notebookId)?.takeUnless { it.isDeleted() }
-                views.applyColorFilter(R.id.notes_widget_background, widget.widgetBgColor)
-                views.setTextColor(R.id.widget_note_title, widget.widgetTextColor)
+                val useDynamicColors = context.useWidgetDynamicColors()
+                views.applyWidgetBackground(widget.widgetBgColor, useDynamicColors)
+                views.applyWidgetTextColor(R.id.widget_note_title, widget.widgetTextColor, useDynamicColors)
                 views.setText(R.id.widget_note_title, notebook?.title ?: "")
                 views.setVisibleIf(R.id.widget_note_title, widget.widgetShowTitle)
-                setupAppOpenIntent(context, views, R.id.notes_widget_holder, widget)
+                setupAppOpenIntent(context, views, android.R.id.background, widget)
 
                 Intent(context, WidgetService::class.java).apply {
                     putExtra(NOTEBOOK_ID, widget.notebookId)

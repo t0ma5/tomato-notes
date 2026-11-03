@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import androidx.core.graphics.ColorUtils
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import androidx.core.app.AlarmManagerCompat
@@ -60,6 +61,10 @@ fun Context.getPercentageFontSize() = resources.getDimension(com.simplemobiletoo
 
 fun Context.getCardSurfaceColor(): Int {
     val bg = getProperBackgroundColor()
+    // System default (Material You): a tonal card made from the wallpaper colors instead of fixed greys
+    if (config.isUsingSystemTheme) {
+        return ColorUtils.blendARGB(bg, getProperTextColor(), 0.06f)
+    }
     return if (bg.getContrastColor() == Color.WHITE) {
         resources.getColor(R.color.note_card_surface, theme)
     } else {
@@ -68,6 +73,9 @@ fun Context.getCardSurfaceColor(): Int {
 }
 
 fun Context.getMutedTextColor(): Int {
+    if (config.isUsingSystemTheme) {
+        return getProperTextColor().adjustAlpha(0.7f)
+    }
     return if (getProperBackgroundColor().getContrastColor() == Color.WHITE) {
         resources.getColor(R.color.note_card_muted, theme)
     } else {
@@ -77,7 +85,9 @@ fun Context.getMutedTextColor(): Int {
 
 fun View.applyNoteCardBackground() {
     val surface = context.getCardSurfaceColor()
-    val stroke = if (surface == Color.WHITE) {
+    val stroke = if (context.config.isUsingSystemTheme) {
+        ColorUtils.blendARGB(context.getProperBackgroundColor(), context.getProperTextColor(), 0.14f)
+    } else if (surface == Color.WHITE) {
         Color.parseColor("#FFE0E0E0")
     } else {
         context.resources.getColor(R.color.note_card_stroke, context.theme)

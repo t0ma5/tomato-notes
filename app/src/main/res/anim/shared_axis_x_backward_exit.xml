@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material shared axis X, backward: the closing screen slides towards the end while fading out -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:fillAfter="true"
+    android:shareInterpolator="false">
+
+    <translate
+        android:duration="300"
+        android:fromXDelta="0"
+        android:interpolator="@android:interpolator/fast_out_slow_in"
+        android:toXDelta="8%" />
+
+    <alpha
+        android:duration="90"
+        android:fillAfter="true"
+        android:fromAlpha="1"
+        android:interpolator="@android:interpolator/fast_out_linear_in"
+        android:toAlpha="0" />
+</set>

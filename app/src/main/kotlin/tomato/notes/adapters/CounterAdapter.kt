@@ -71,8 +71,16 @@ class CounterAdapter(
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, context.getPercentageFontSize())
             }
 
-            counterPlus.applyColorFilter(resources.getColor(com.simplemobiletools.commons.R.color.md_green_700))
-            counterMinus.applyColorFilter(resources.getColor(com.simplemobiletools.commons.R.color.md_red_700))
+            if (baseConfig.isUsingSystemTheme) {
+                // Material You: follow the wallpaper palette instead of fixed green/red
+                counterPlus.applyColorFilter(properPrimaryColor)
+                counterMinus.applyColorFilter(properPrimaryColor)
+            } else {
+                counterPlus.applyColorFilter(resources.getColor(com.simplemobiletools.commons.R.color.md_green_700))
+                counterMinus.applyColorFilter(resources.getColor(com.simplemobiletools.commons.R.color.md_red_700))
+            }
+            counterPlus.contentDescription = resources.getString(R.string.a11y_increase_counter, counterItem.title)
+            counterMinus.contentDescription = resources.getString(R.string.a11y_decrease_counter, counterItem.title)
             counterPlus.beVisibleIf(!readOnly)
             counterMinus.beVisibleIf(!readOnly)
             counterPlus.isEnabled = !readOnly

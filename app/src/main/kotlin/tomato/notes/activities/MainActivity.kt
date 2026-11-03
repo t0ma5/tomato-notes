@@ -86,6 +86,7 @@ class MainActivity : SimpleActivity() {
     private val pendingOnShown = mutableListOf<() -> Unit>()
     private var lastSelectedPage = 0
     private var pendingNotePicker = false
+    private var useSharedAxisMotion = false
 
     private val backPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -104,6 +105,7 @@ class MainActivity : SimpleActivity() {
         isMaterialActivity = true
         super.onCreate(savedInstanceState)
         setContentView(binding.root)
+        useSharedAxisMotion = setupSharedAxisTransitions()
         setupOptionsMenu()
         refreshMenuItems()
 
@@ -359,9 +361,18 @@ class MainActivity : SimpleActivity() {
         backPressedCallback.isEnabled = true
     }
 
+    override fun finish() {
+        super.finish()
+        if (useSharedAxisMotion) {
+            overrideSharedAxisCloseMotion()
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // reused from the notes lists (slides back to them) or from a widget (system transitions)
+        useSharedAxisMotion = setupSharedAxisTransitions()
         // widgets send 0 when their note or notebook is gone, treat it like none
         val wantedNoteId = intent.getLongExtra(OPEN_NOTE_ID, -1L).takeIf { it > 0L } ?: -1L
         val wantedNotebookId = intent.getLongExtra(NOTEBOOK_ID, -1L)
@@ -666,6 +677,9 @@ class MainActivity : SimpleActivity() {
             mAdapter?.saveAllFragmentTexts()
         }
         isNotebookShown = false
+        if (isSearchActive) {
+            closeSearch()
+        }
         hideKeyboard()
         binding.viewPager.beInvisible()
         showNotebook(currentNotebookId, if (::mCurrentNote.isInitialized) mCurrentNote.id else null)
@@ -735,7 +749,9 @@ class MainActivity : SimpleActivity() {
             currentTextFragment?.removeTextWatcher()
             noteView.text!!.clearBackgroundSpans()
 
-            if (text.isNotBlank() && text.length > 1) {
+            // matches of an older query must not move the cursor once the query is cleared or too short
+            searchMatches = emptyList()
+            if (isSearchActive && text.isNotBlank() && text.length > 1) {
                 searchMatches = noteView.value.searchMatches(text)
                 noteView.highlightText(text, getProperPrimaryColor())
             }
@@ -747,9 +763,14 @@ class MainActivity : SimpleActivity() {
                 noteView.safeSetSelection(searchMatches.getOrNull(searchIndex) ?: 0)
             }
 
-            searchQueryET.postDelayed({
-                searchQueryET.requestFocus()
-            }, 50)
+            // not after closeSearch, it would move the focus back into the hidden search field
+            if (isSearchActive) {
+                searchQueryET.postDelayed({
+                    if (isSearchActive) {
+                        searchQueryET.requestFocus()
+                    }
+                }, 50)
+            }
         }
     }
 
@@ -805,9 +826,14 @@ class MainActivity : SimpleActivity() {
         }, 250)
     }
 
+    // Also runs from the back callback (predictive back included) while the search bar is open
     private fun closeSearch() {
-        searchQueryET.text?.clear()
         isSearchActive = false
+        // clearing the query also clears the highlights of the current note through searchTextChanged
+        searchQueryET.text?.clear()
+        searchIndex = 0
+        searchMatches = emptyList()
+        currentTextFragment?.clearSearchHighlights()
         binding.searchWrapper.root.fadeOut()
         hideKeyboard()
     }
@@ -1384,27 +1410,35 @@ class MainActivity : SimpleActivity() {
         }
     }
 
+    // With the Recycle bin on, a delete can be undone, so it happens at once and a snackbar offers Undo.
+    // The dialog stays when the delete is permanent, and for file-linked notes, where it asks whether
+    // the file itself goes too (a deleted file cannot be undone).
     private fun displayDeleteNotePrompt() {
+        if (config.useRecycleBin && mCurrentNote.path.isEmpty()) {
+            deleteNote(false, mCurrentNote, offerUndo = true)
+            return
+        }
+
         DeleteNoteDialog(this, mCurrentNote) {
-            deleteNote(it, mCurrentNote)
+            deleteNote(it, mCurrentNote, offerUndo = true)
         }
     }
 
-    fun deleteNote(deleteFile: Boolean, note: Note) {
+    fun deleteNote(deleteFile: Boolean, note: Note, offerUndo: Boolean = false) {
         if (mNotes.isEmpty() || note != mCurrentNote) {
             return
         }
 
         if (!deleteFile) {
-            doDeleteNote(mCurrentNote, deleteFile)
+            doDeleteNote(mCurrentNote, deleteFile, offerUndo)
         } else {
             handleSAFDialog(mCurrentNote.path) {
-                doDeleteNote(mCurrentNote, deleteFile)
+                doDeleteNote(mCurrentNote, deleteFile, offerUndo)
             }
         }
     }
 
-    private fun doDeleteNote(note: Note, deleteFile: Boolean) {
+    private fun doDeleteNote(note: Note, deleteFile: Boolean, offerUndo: Boolean) {
         val currentNoteIndex = mNotes.indexOf(note)
         val noteToRefresh = when {
             mNotes.size <= 1 -> null
@@ -1412,14 +1446,34 @@ class MainActivity : SimpleActivity() {
             else -> mNotes.getOrNull(currentNoteIndex + 1)
         }
 
+        val useRecycleBin = config.useRecycleBin
         RecycleBinHelper(this).deleteNote(note) {
-            if (config.useRecycleBin) {
+            if (useRecycleBin && offerUndo && !deleteFile) {
+                showUndoSnackbar(binding.mainCoordinator, getString(R.string.note_moved_to_recycle_bin)) {
+                    undoDeleteNote(note)
+                }
+            } else if (useRecycleBin) {
                 toast(R.string.moved_to_recycle_bin)
             }
-            note.id?.let {
-                config.removeChecklistSorting(it)
+            // a trashed note keeps its checklist sorting, so it comes back as it was
+            if (!useRecycleBin) {
+                note.id?.let {
+                    config.removeChecklistSorting(it)
+                }
             }
             refreshNotes(noteToRefresh, note, deleteFile)
+        }
+    }
+
+    // Only clears the note's deleted mark, so its notebook, order, pin and lock stay as they were
+    private fun undoDeleteNote(note: Note) {
+        val noteId = note.id ?: return
+        RecycleBinHelper(this).restoreNote(note) {
+            if (isFinishing || isDestroyed || !isNotebookShown || note.notebookId != currentNotebookId) {
+                return@restoreNote
+            }
+            config.currentNoteId = noteId
+            initViewPager(noteId)
         }
     }
 

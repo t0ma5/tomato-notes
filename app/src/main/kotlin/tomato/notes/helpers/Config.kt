@@ -167,4 +167,9 @@ class Config(context: Context) : BaseConfig(context) {
     fun saveCheckedItemsCollapsed(noteId: Long, collapsed: Boolean) {
         prefs.edit().putBoolean("$CHECKED_ITEMS_COLLAPSED_PREFIX$noteId", collapsed).apply()
     }
+
+    // Material You for home-screen widgets on Android 12+, instead of the customized widget colors
+    var widgetUseDynamicColors: Boolean
+        get() = prefs.getBoolean(WIDGET_USE_DYNAMIC_COLORS, false)
+        set(widgetUseDynamicColors) = prefs.edit().putBoolean(WIDGET_USE_DYNAMIC_COLORS, widgetUseDynamicColors).apply()
 }

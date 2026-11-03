@@ -1,7 +1,16 @@
 package tomato.notes.helpers
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.view.View
+import android.widget.ImageView
+import com.google.android.material.search.SearchView
 import com.google.gson.Gson
+import com.simplemobiletools.commons.extensions.adjustAlpha
+import com.simplemobiletools.commons.extensions.applyColorFilter
+import com.simplemobiletools.commons.extensions.getProperBackgroundColor
+import com.simplemobiletools.commons.extensions.getProperTextColor
+import com.simplemobiletools.commons.helpers.MEDIUM_ALPHA
 import com.google.gson.reflect.TypeToken
 import tomato.notes.R
 import tomato.notes.extensions.notesDB
@@ -19,6 +28,26 @@ data class NoteSearchResult(
     val subtitle: String
 ) {
     val isNotebook get() = notebook != null
+}
+
+// Paints a Material SearchView with the commons colors instead of the theme's surface colors, so it matches
+// the rest of the app with any color scheme. Internal parts are looked up by name and skipped if missing.
+fun SearchView.applyProperColors() {
+    val backgroundColor = context.getProperBackgroundColor()
+    val textColor = context.getProperTextColor()
+
+    findMaterialView("open_search_view_background")?.setBackgroundColor(backgroundColor)
+    findMaterialView("open_search_view_divider")?.setBackgroundColor(textColor.adjustAlpha(0.2f))
+    (findMaterialView("open_search_view_clear_button") as? ImageView)?.applyColorFilter(textColor)
+    editText.setTextColor(textColor)
+    editText.setHintTextColor(textColor.adjustAlpha(MEDIUM_ALPHA))
+    toolbar.navigationIcon?.applyColorFilter(textColor)
+}
+
+@SuppressLint("DiscouragedApi")
+private fun SearchView.findMaterialView(name: String): View? {
+    val id = resources.getIdentifier(name, "id", context.packageName)
+    return if (id != 0) findViewById(id) else null
 }
 
 class NoteSearchHelper(private val context: Context) {

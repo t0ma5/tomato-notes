@@ -73,12 +73,14 @@
 
         <ImageView
             android:id="@+id/notebook_drag_handle"
-            android:layout_width="24dp"
+            android:layout_width="48dp"
             android:layout_height="24dp"
+            android:layout_marginEnd="-12dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:clickable="true"
             android:contentDescription="@string/notebook_actions"
             android:focusable="true"
+            android:paddingHorizontal="12dp"
             android:src="@drawable/ic_drag_indicator_vector" />
     </LinearLayout>
 

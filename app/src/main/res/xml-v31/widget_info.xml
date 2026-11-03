@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: same as xml/widget_info.xml plus a live picker preview and a description -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="tomato.notes.activities.WidgetConfigureActivity"
+    android:description="@string/widget_note_description"
+    android:initialLayout="@layout/widget"
+    android:minWidth="180dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="40dp"
+    android:minResizeHeight="40dp"
+    android:previewImage="@drawable/img_widget_preview"
+    android:previewLayout="@layout/widget_preview_note"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="3"
+    android:targetCellHeight="2"
+    android:widgetCategory="home_screen" />
