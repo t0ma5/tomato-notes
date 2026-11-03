@@ -48,6 +48,16 @@ Keep the preamble (release-signed FOSS APKs for `tomato.notes`, the four APK nam
 
 Group related work under one number. Match the previous release: bold title, em dash, concrete behavior.
 
+## One build per release
+
+CI (`build.yml`) runs on pushes to `master` and on `v*` tags. To avoid building the same commit twice:
+
+- The release commit message must start with `Release ` (e.g. `Release 1.2: ...`). The master build skips commits whose message starts with `Release `; the tag build is the only one.
+- Push the release commit and the tag together: `git push origin master` then `git push origin v<version>`. Don't push master earlier "to check it compiles" and then tag the same commit.
+- To check that unreleased work compiles, push it as a normal (non-`Release `) commit; that builds once on master. Then the version-bump commit and tag build once more on the tag.
+- Docs-only pushes (README, CHANGELOG, CONTRIBUTING, LICENSE, fastlane, graphics, .claude) don't build at all (`paths-ignore`). Tag pushes always build.
+- For any other push that shouldn't build, add `[skip ci]` to the commit message.
+
 ## Names
 
 - App ID `tomato.notes`. The old ID `tomato.simple.notes` does not update to it.

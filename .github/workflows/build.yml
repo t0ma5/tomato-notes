@@ -6,6 +6,15 @@ on:
       - master
     tags:
       - "v*"
+    # Docs-only pushes to master don't need an APK. GitHub ignores paths filters for tag pushes, so releases always build.
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE"
+      - "fastlane/**"
+      - "graphics/**"
+      - ".claude/**"
   pull_request:
     branches:
       - master
@@ -21,6 +30,8 @@ concurrency:
 
 jobs:
   build:
+    # A release pushes master and its v* tag together; build that commit once, on the tag
+    if: github.ref_type == 'tag' || github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'Release ')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
